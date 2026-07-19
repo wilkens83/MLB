@@ -6,7 +6,6 @@ import {
 } from "./paSim";
 import { buildAdjustmentBreakdown } from "./adjustments";
 import { scoreDataQuality, buildWarnings } from "./quality";
-import { mean } from "@/lib/math/stats";
 import type { GameLogEntry, StatcastPitcher } from "@/lib/domain/models";
 
 describe("projection", () => {
