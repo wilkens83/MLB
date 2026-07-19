@@ -1,0 +1,209 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   DIAMOND — MLB Player Props Analytics Platform
+   Design system: luxury black + orange, glassmorphism, dual theme.
+   Tailwind v4 CSS-first configuration.
+   ========================================================================== */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  /* Brand — molten orange */
+  --brand-50: #fff7ed;
+  --brand-100: #ffedd5;
+  --brand-200: #fed7aa;
+  --brand-300: #fdba74;
+  --brand-400: #fb923c;
+  --brand-500: #f97316;
+  --brand-600: #ea580c;
+  --brand-700: #c2410c;
+  --brand-800: #9a3412;
+  --brand-900: #7c2d12;
+
+  /* Semantic (light theme defaults) */
+  --background: #f7f7f8;
+  --surface: #ffffff;
+  --surface-2: #f2f2f4;
+  --surface-glass: rgba(255, 255, 255, 0.7);
+  --surface-glass-border: rgba(15, 15, 20, 0.08);
+  --foreground: #0b0b0f;
+  --muted: #6b7280;
+  --muted-2: #9ca3af;
+  --border: rgba(15, 15, 20, 0.1);
+  --ring: var(--brand-500);
+
+  --accent: var(--brand-500);
+  --accent-foreground: #ffffff;
+
+  --positive: #16a34a;
+  --negative: #dc2626;
+  --warning: #d97706;
+  --info: #2563eb;
+
+  --radius: 0.9rem;
+  --shadow-glow: 0 0 0 1px rgba(249, 115, 22, 0.14), 0 8px 40px -12px rgba(249, 115, 22, 0.35);
+}
+
+.dark {
+  --background: #050506;
+  --surface: #0c0c10;
+  --surface-2: #131318;
+  --surface-glass: rgba(18, 18, 24, 0.55);
+  --surface-glass-border: rgba(255, 255, 255, 0.08);
+  --foreground: #f5f5f7;
+  --muted: #9a9aa6;
+  --muted-2: #6b6b78;
+  --border: rgba(255, 255, 255, 0.09);
+  --ring: var(--brand-500);
+
+  --positive: #22c55e;
+  --negative: #ef4444;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+
+  --shadow-glow: 0 0 0 1px rgba(249, 115, 22, 0.18), 0 10px 60px -12px rgba(249, 115, 22, 0.45);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-2: var(--muted-2);
+  --color-border: var(--border);
+  --color-ring: var(--ring);
+
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-warning: var(--warning);
+  --color-info: var(--info);
+
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 0.4rem);
+  --radius-2xl: calc(var(--radius) + 0.8rem);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-pulse-glow: pulse-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+* {
+  border-color: var(--border);
+}
+
+html {
+  color-scheme: light dark;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Ambient background glow layer */
+.app-aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60rem 40rem at 85% -10%, rgba(249, 115, 22, 0.14), transparent 60%),
+    radial-gradient(50rem 40rem at 0% 10%, rgba(234, 88, 12, 0.08), transparent 55%);
+}
+.dark .app-aurora {
+  background:
+    radial-gradient(60rem 40rem at 85% -10%, rgba(249, 115, 22, 0.16), transparent 60%),
+    radial-gradient(52rem 42rem at -5% 5%, rgba(124, 45, 18, 0.22), transparent 55%);
+}
+
+/* Glass surface utilities */
+@utility glass {
+  background: var(--surface-glass);
+  border: 1px solid var(--surface-glass-border);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+@utility glass-strong {
+  background: color-mix(in oklab, var(--surface) 82%, transparent);
+  border: 1px solid var(--surface-glass-border);
+  backdrop-filter: blur(24px) saturate(150%);
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+}
+
+/* Text gradient for hero accents */
+@utility text-gradient-brand {
+  background: linear-gradient(100deg, var(--brand-400), var(--brand-600));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Shimmer skeleton */
+@utility shimmer-bg {
+  background: linear-gradient(
+    90deg,
+    var(--surface-2) 0%,
+    color-mix(in oklab, var(--surface-2) 60%, var(--brand-500) 8%) 50%,
+    var(--surface-2) 100%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+/* Scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--muted-2) transparent;
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb {
+  background: var(--muted-2);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Focus ring */
+:where(a, button, input, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
