@@ -35,8 +35,6 @@ export async function GET(
       side: (sp.get("side") as Side) ?? undefined,
       overAmerican: num(sp.get("over")),
       underAmerican: num(sp.get("under")),
-      venueName: sp.get("venueName") ?? undefined,
-      tempF: num(sp.get("temp")),
       venueSplit,
       lastN: num(sp.get("lastN")),
       season: num(sp.get("season")),

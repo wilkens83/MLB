@@ -61,6 +61,7 @@ const EXTRACTORS: Record<string, Extractor> = {
   doubles: (s) => s.doubles ?? 0,
   triples: (s) => s.triples ?? 0,
   walks: (s) => s.baseOnBalls ?? 0,
+  batter_strikeouts: (s) => s.strikeOuts ?? 0,
   steals: (s) => s.stolenBases ?? 0,
   fantasy_points: draftKingsHitterPoints,
 };

@@ -82,7 +82,7 @@ function estimateDispersion(series: number[], mu: number): number {
 export function project(input: ProjectionInput): Projection {
   const { series, family } = input;
   const n = series.length;
-  const halfLife = input.halfLife ?? 12;
+  const halfLife = input.halfLife ?? 8;
   const alpha = alphaFromHalfLife(halfLife);
 
   const recentMean = n > 0 ? ewma(series, alpha) : (input.priorMean ?? 0);

@@ -1,16 +1,33 @@
 /* ============================================================================
-   Server-side prop analysis orchestrator — fetches a player's game log from the
-   live MLB API, extracts the series for the requested prop, applies contextual
-   adjustments, and runs the full prediction engine. Returns a serializable
-   payload for API routes and server components.
+   Server-side prop analysis orchestrator (Phase 2). Fetches a player's game log
+   and Statcast from the provider layer, resolves the opposing starter and park,
+   builds an explainable adjustment breakdown, runs either the plate-appearance
+   simulation (for PA-modeled batter props) or the marginal Monte Carlo, and
+   returns a fully-provenanced, quality-scored payload.
    ========================================================================== */
 
-import { getPlayer, getGameLog, getMultiSeasonGameLog, CURRENT_SEASON } from "./api";
+import { getPlayer, getGameLog, getMultiSeasonGameLog, getSchedule, CURRENT_SEASON } from "./api";
 import { extractPropSeries, seriesValues, statGroupForProp, type PropGameSample } from "./series";
-import { buildContext } from "./context";
-import { analyzeProp, type PropAnalysis } from "@/lib/prediction/engine";
+import { mapPlayer, mapGame } from "@/lib/providers/mlbStats";
+import { savantStatcastProvider } from "@/lib/providers/statcast";
+import { staticParkProvider } from "@/lib/providers/park";
 import { getProp } from "@/lib/props/catalog";
-import type { Side } from "@/lib/analytics/hitRate";
+import { project } from "@/lib/prediction/projection";
+import { simulate, recommend, type SimulationResult } from "@/lib/prediction/simulate";
+import { analyzeStat, type Side, type StatAnalytics } from "@/lib/analytics/hitRate";
+import { buildAdjustmentBreakdown, pitcherOffenseMultiplierForProp } from "@/lib/prediction/adjustments";
+import {
+  estimatePaRates, expectedPasPerGame, adjustPaRates, paAdjustmentsFromPitcher,
+  simulatePlateAppearances, PA_MODELED_PROPS,
+} from "@/lib/prediction/paSim";
+import { scoreDataQuality, buildWarnings } from "@/lib/prediction/quality";
+import type {
+  AdjustmentBreakdown, DataQuality, PredictionProvenance, PredictionWarning,
+  StatcastBatter, StatcastPitcher,
+} from "@/lib/domain/models";
+import type { PropDef } from "@/lib/props/catalog";
+
+export const MODEL_VERSION = "2.0.0-statcast";
 
 export interface AnalysisRequest {
   playerId: number;
@@ -19,14 +36,32 @@ export interface AnalysisRequest {
   side?: Side;
   overAmerican?: number;
   underAmerican?: number;
-  venueName?: string;
-  tempF?: number;
-  /** "home" | "away" | undefined — filters the series by venue split. */
   venueSplit?: "home" | "away";
-  /** Limit to the most recent N games (e.g. L10). undefined = full sample. */
   lastN?: number;
   season?: number;
   multiSeason?: boolean;
+}
+
+export interface EngineAnalysis {
+  prop: PropDef;
+  line: number;
+  side: Side;
+  projection: ReturnType<typeof project>;
+  simulation: SimulationResult;
+  analytics: StatAnalytics;
+  recommendation: ReturnType<typeof recommend>;
+  modeledBy: "plate-appearance" | "marginal";
+}
+
+export interface OpponentContext {
+  pitcherId?: number;
+  pitcherName?: string;
+  pitcherHand?: string;
+  venueName?: string;
+  opponentTeam?: string;
+  gamePk?: number;
+  lineupConfirmed: boolean;
+  starterConfirmed: boolean;
 }
 
 export interface AnalysisPayload {
@@ -39,90 +74,204 @@ export interface AnalysisPayload {
     throws?: string;
   } | null;
   samples: PropGameSample[];
-  analysis: PropAnalysis | null;
-  meta: {
-    propKey: string;
-    line: number;
-    sampleSize: number;
-    filteredFrom: number;
-    season: number;
-  };
+  analysis: EngineAnalysis | null;
+  statcast: { batter?: StatcastBatter | null; pitcher?: StatcastPitcher | null };
+  opponent: OpponentContext | null;
+  breakdown: AdjustmentBreakdown | null;
+  warnings: PredictionWarning[];
+  dataQuality: DataQuality | null;
+  provenance: PredictionProvenance | null;
+  meta: { propKey: string; line: number; sampleSize: number; filteredFrom: number; season: number };
+  lastUpdated: number;
   error?: string;
+}
+
+/** Find today's game + opposing starter for a player's team. */
+async function resolveOpponent(teamId: number | undefined): Promise<OpponentContext | null> {
+  if (!teamId) return null;
+  const today = new Date().toISOString().slice(0, 10);
+  const games = await getSchedule(today).catch(() => []);
+  for (const raw of games) {
+    const g = mapGame(raw);
+    const isHome = g.home.teamId === teamId;
+    const isAway = g.away.teamId === teamId;
+    if (!isHome && !isAway) continue;
+    const opp = isHome ? g.away : g.home;
+    return {
+      pitcherId: opp.probablePitcherId,
+      pitcherName: opp.probablePitcherName,
+      venueName: g.venueName,
+      opponentTeam: opp.teamName,
+      gamePk: g.gamePk,
+      lineupConfirmed: false, // MLB confirms lineups ~1-2h pregame; treated as projected here
+      starterConfirmed: opp.probablePitcherId !== undefined,
+    };
+  }
+  return null;
 }
 
 export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload> {
   const prop = getProp(req.propKey);
   const season = req.season ?? CURRENT_SEASON;
+  const lastUpdated = Date.now();
 
-  const [player, log] = await Promise.all([
-    getPlayer(req.playerId).catch(() => null),
-    (req.multiSeason
-      ? getMultiSeasonGameLog(req.playerId, statGroupForProp(req.propKey))
-      : getGameLog(req.playerId, statGroupForProp(req.propKey), season)
-    ).catch(() => []),
-  ]);
-
+  const rawPlayer = await getPlayer(req.playerId).catch(() => null);
+  const player = rawPlayer ? mapPlayer(rawPlayer) : null;
   const playerInfo = player
-    ? {
-        id: player.id,
-        name: player.fullName,
-        position: player.primaryPosition?.abbreviation ?? "",
-        team: player.currentTeam?.name ?? "",
-        bats: player.batSide?.code,
-        throws: player.pitchHand?.code,
-      }
+    ? { id: player.id, name: player.name, position: player.position, team: player.teamName ?? "", bats: player.bats, throws: player.throws }
     : null;
 
-  if (!prop) {
+  if (!prop || !player) {
     return {
-      player: playerInfo,
-      samples: [],
-      analysis: null,
+      player: playerInfo, samples: [], analysis: null, statcast: {}, opponent: null,
+      breakdown: null, warnings: [], dataQuality: null, provenance: null,
       meta: { propKey: req.propKey, line: 0, sampleSize: 0, filteredFrom: 0, season },
-      error: "unknown_prop",
+      lastUpdated, error: !prop ? "unknown_prop" : "unknown_player",
     };
   }
 
+  const group = statGroupForProp(req.propKey);
+  const [log, opponent] = await Promise.all([
+    req.multiSeason ? getMultiSeasonGameLog(player.id, group) : getGameLog(player.id, group, season),
+    prop.category === "batter" ? resolveOpponent(player.teamId) : Promise.resolve(null),
+  ]);
+
+  // Statcast: the player's own row + (for batters) the opposing starter's row.
+  const [ownStatcast, oppStatcast] = await Promise.all([
+    player.isPitcher
+      ? savantStatcastProvider.getPitcher(player.id, season).catch(() => null)
+      : savantStatcastProvider.getBatter(player.id, season).catch(() => null),
+    opponent?.pitcherId
+      ? savantStatcastProvider.getPitcher(opponent.pitcherId, season).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+
+  // Prop series (venue/lastN filtered) for hit-rate analytics + base projection.
   let samples = extractPropSeries(req.propKey, log);
   const filteredFrom = samples.length;
-
   if (req.venueSplit === "home") samples = samples.filter((s) => s.isHome);
   else if (req.venueSplit === "away") samples = samples.filter((s) => s.isHome === false);
   if (req.lastN && req.lastN > 0) samples = samples.slice(Math.max(0, samples.length - req.lastN));
 
   const series = seriesValues(samples);
   const line = req.line ?? prop.defaultLine;
+  const side = req.side ?? "over";
 
-  const context = buildContext({
+  if (series.length === 0) {
+    return {
+      player: playerInfo, samples: [], analysis: null,
+      statcast: player.isPitcher ? { pitcher: ownStatcast as StatcastPitcher } : { batter: ownStatcast as StatcastBatter },
+      opponent, breakdown: null, warnings: [], dataQuality: null, provenance: null,
+      meta: { propKey: req.propKey, line, sampleSize: 0, filteredFrom, season },
+      lastUpdated, error: "no_series_data",
+    };
+  }
+
+  const analytics = analyzeStat(series, line, side);
+
+  // Base = shrunk expectation with NO context (context is applied explicitly below).
+  const baseProjection = project({ series, family: prop.family });
+  const base = baseProjection.shrunkMean;
+
+  const venueName = opponent?.venueName;
+  const breakdown = buildAdjustmentBreakdown({
     propKey: req.propKey,
-    venueName: req.venueName,
-    tempF: req.tempF,
+    base,
+    venueName,
+    batterHand: player.bats,
+    opposingPitcher: prop.category === "batter" ? (oppStatcast as StatcastPitcher | null) : null,
+    opposingPitcherHand: undefined,
+    formRatio: analytics.trend.formRatio,
   });
 
-  const analysis =
-    series.length > 0
-      ? analyzeProp({
-          propKey: req.propKey,
-          series,
-          line,
-          side: req.side,
-          overAmerican: req.overAmerican,
-          underAmerican: req.underAmerican,
-          context,
-          seed: `${req.playerId}:${req.propKey}:${line}`,
-        })
-      : null;
+  const finalLambda = breakdown.final;
+  const projection = { ...baseProjection, lambda: finalLambda, contextMultiplier: base > 0 ? finalLambda / base : 1 };
+
+  // Choose the simulator: PA engine for batting props it models directly.
+  let simulation: SimulationResult;
+  let modeledBy: "plate-appearance" | "marginal" = "marginal";
+  if (prop.category === "batter" && PA_MODELED_PROPS.has(req.propKey) && !req.venueSplit && !req.lastN) {
+    const rates0 = estimatePaRates(log.map((sp) => ({ stat: numify(sp.stat as unknown as Record<string, unknown>) })));
+    const offenseMult = pitcherOffenseMultiplierForProp(req.propKey, oppStatcast as StatcastPitcher | null);
+    const paAdj = paAdjustmentsFromPitcher(oppStatcast as StatcastPitcher | null, offenseMult);
+    const rates = adjustPaRates(rates0, paAdj);
+    const expectedPa = expectedPasPerGame(log.map((sp) => ({ stat: numify(sp.stat as unknown as Record<string, unknown>) })));
+    const results = simulatePlateAppearances(rates, { [req.propKey]: line } as Record<string, number>, {
+      iterations: 10000,
+      seed: `${player.id}:${req.propKey}:${line}`,
+      expectedPa,
+    });
+    simulation = results[req.propKey] ?? simulate(projection, line, { seed: `${player.id}:${req.propKey}:${line}` });
+    if (results[req.propKey]) modeledBy = "plate-appearance";
+  } else {
+    simulation = simulate(projection, line, { seed: `${player.id}:${req.propKey}:${line}` });
+  }
+
+  const recommendation = recommend({
+    sim: simulation,
+    overAmerican: req.overAmerican,
+    underAmerican: req.underAmerican,
+    sampleSize: series.length,
+  });
+
+  const hasStatcast = !!ownStatcast && ownStatcast.availableMetrics.length > 0;
+  const hasOpponent = prop.category === "batter" ? !!oppStatcast : false;
+  const dataQuality = scoreDataQuality({
+    sampleSize: series.length,
+    hasStatcast,
+    hasOpponent,
+    hasWeather: false,
+    hasLineup: false,
+  });
+
+  const modelDisagreement = recommendation.best
+    ? Math.abs(recommendation.best.modelProb - recommendation.best.impliedProb)
+    : undefined;
+
+  const warnings = buildWarnings({
+    sampleSize: series.length,
+    hasStatcast,
+    hasOpponent,
+    hasWeather: false,
+    lineupConfirmed: opponent?.lineupConfirmed ?? false,
+    starterConfirmed: opponent?.starterConfirmed ?? false,
+    manualOdds: req.overAmerican !== undefined || req.underAmerican !== undefined,
+    modelDisagreement,
+    dataAgeMs: ownStatcast ? Date.now() - ownStatcast.fetchedAt : undefined,
+  });
+
+  const provenance: PredictionProvenance = {
+    modelVersion: MODEL_VERSION,
+    seed: `${player.id}:${req.propKey}:${line}`,
+    dataTimestamp: lastUpdated,
+    sources: [
+      { name: "mlb-stats-api", available: true, fetchedAt: lastUpdated },
+      { name: "baseball-savant", available: hasStatcast, fetchedAt: ownStatcast?.fetchedAt },
+      { name: "static-park-factors", available: !!venueName && staticParkProvider.getFactor(venueName).runs !== 1 },
+    ],
+  };
 
   return {
     player: playerInfo,
     samples,
-    analysis,
-    meta: {
-      propKey: req.propKey,
-      line,
-      sampleSize: series.length,
-      filteredFrom,
-      season,
-    },
+    analysis: { prop, line, side, projection, simulation, analytics, recommendation, modeledBy },
+    statcast: player.isPitcher ? { pitcher: ownStatcast as StatcastPitcher } : { batter: ownStatcast as StatcastBatter, pitcher: oppStatcast as StatcastPitcher },
+    opponent,
+    breakdown,
+    warnings,
+    dataQuality,
+    provenance,
+    meta: { propKey: req.propKey, line, sampleSize: series.length, filteredFrom, season },
+    lastUpdated,
   };
+}
+
+/** Coerce a raw stat bag (numbers or numeric strings) into numbers. */
+function numify(stat: Record<string, unknown>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(stat)) {
+    const n = typeof v === "number" ? v : Number(v);
+    if (Number.isFinite(n)) out[k] = n;
+  }
+  return out;
 }

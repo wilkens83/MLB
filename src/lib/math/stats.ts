@@ -82,12 +82,26 @@ export function percentileRank(xs: readonly number[], value: number): number {
   return ((below + 0.5 * equal) / xs.length) * 100;
 }
 
-/** Exponentially weighted moving average (most recent weighted highest). */
+/**
+ * Recency-weighted mean: a normalized exponentially-weighted average where the
+ * most recent observation carries the highest weight and older ones decay by
+ * (1 - alpha) per step. Unlike the classic forward EWMA recursion, this
+ * normalizes over all weights so it has no initialization lag toward the oldest
+ * value — critical when the series is short.
+ */
 export function ewma(xs: readonly number[], alpha = 0.4): number {
-  if (xs.length === 0) return NaN;
-  let acc = xs[0];
-  for (let i = 1; i < xs.length; i++) acc = alpha * xs[i] + (1 - alpha) * acc;
-  return acc;
+  const n = xs.length;
+  if (n === 0) return NaN;
+  const decay = Math.min(0.999, Math.max(0, 1 - alpha));
+  let acc = 0;
+  let wsum = 0;
+  let w = 1;
+  for (let i = n - 1; i >= 0; i--) {
+    acc += w * xs[i];
+    wsum += w;
+    w *= decay;
+  }
+  return wsum > 0 ? acc / wsum : xs[n - 1];
 }
 
 /** Trailing rolling averages of window `w` across the series. */
