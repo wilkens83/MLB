@@ -15,6 +15,8 @@ import type {
   TeamsResponse,
   GameLogSplit,
 } from "./types";
+import { safeValidate } from "@/lib/schemas/validate";
+import { scheduleSchema, peopleSchema, statsSchema } from "@/lib/schemas/mlb";
 
 const CURRENT_SEASON = 2026;
 
@@ -26,10 +28,11 @@ export async function getTeams(): Promise<MlbTeam[]> {
 
 /** Games for a given ISO date (YYYY-MM-DD), hydrated with pitchers + linescore. */
 export async function getSchedule(date: string): Promise<MlbGame[]> {
-  const res = await mlbGet<ScheduleResponse>(
+  const raw = await mlbGet<unknown>(
     `/schedule?sportId=1&date=${date}&hydrate=probablePitcher,team,linescore,venue,weather`,
     { ttl: 45 },
   );
+  const res = safeValidate(scheduleSchema, raw, { dates: [] }, "schedule") as unknown as ScheduleResponse;
   return res.dates.flatMap((d) => d.games);
 }
 
@@ -47,10 +50,11 @@ export async function getLiveGames(now = new Date()): Promise<MlbGame[]> {
 
 /** A single game by its gamePk, hydrated with pitchers, lineups, and linescore. */
 export async function getGame(gamePk: number): Promise<MlbGame | null> {
-  const res = await mlbGet<ScheduleResponse>(
+  const raw = await mlbGet<unknown>(
     `/schedule?sportId=1&gamePks=${gamePk}&hydrate=probablePitcher,team,linescore,venue,lineups,weather`,
     { ttl: 30 },
   );
+  const res = safeValidate(scheduleSchema, raw, { dates: [] }, "game") as unknown as ScheduleResponse;
   return res.dates?.[0]?.games?.[0] ?? null;
 }
 
@@ -58,19 +62,18 @@ export async function getGame(gamePk: number): Promise<MlbGame | null> {
 export async function searchPlayers(query: string): Promise<MlbPerson[]> {
   const q = query.trim();
   if (q.length < 2) return [];
-  const res = await mlbGet<PeopleResponse>(
+  const raw = await mlbGet<unknown>(
     `/people/search?names=${encodeURIComponent(q)}&active=true`,
     { ttl: 300 },
   );
+  const res = safeValidate(peopleSchema, raw, { people: [] }, "search") as unknown as PeopleResponse;
   return res.people ?? [];
 }
 
 /** Full player profile. */
 export async function getPlayer(id: number): Promise<MlbPerson | null> {
-  const res = await mlbGet<PeopleResponse>(
-    `/people/${id}?hydrate=currentTeam`,
-    { ttl: 600 },
-  );
+  const raw = await mlbGet<unknown>(`/people/${id}?hydrate=currentTeam`, { ttl: 600 });
+  const res = safeValidate(peopleSchema, raw, { people: [] }, "player") as unknown as PeopleResponse;
   return res.people?.[0] ?? null;
 }
 
@@ -80,10 +83,11 @@ export async function getGameLog(
   group: StatGroup,
   season = CURRENT_SEASON,
 ): Promise<GameLogSplit[]> {
-  const res = await mlbGet<StatsResponse>(
+  const raw = await mlbGet<unknown>(
     `/people/${playerId}/stats?stats=gameLog&group=${group}&season=${season}`,
     { ttl: 300 },
   );
+  const res = safeValidate(statsSchema, raw, { stats: [] }, "gameLog") as unknown as StatsResponse;
   const splits = res.stats?.[0]?.splits ?? [];
   return splits;
 }
