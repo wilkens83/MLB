@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Diamond, Activity, Users, LineChart } from "lucide-react";
+import { Diamond, Activity, Users, LineChart, HeartPulse } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
 import { PlayerSearch } from "./player-search";
@@ -11,6 +11,7 @@ const NAV = [
   { href: "/", label: "Dashboard", icon: Activity },
   { href: "/games", label: "Games", icon: LineChart },
   { href: "/players", label: "Players", icon: Users },
+  { href: "/health", label: "Health", icon: HeartPulse },
 ];
 
 export function SiteHeader() {

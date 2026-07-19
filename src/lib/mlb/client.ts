@@ -4,6 +4,8 @@
    the MLB Stats API (statsapi.mlb.com) is public.
    ========================================================================== */
 
+import { recordSuccess, recordFailure } from "@/lib/providers/health";
+
 const BASE = "https://statsapi.mlb.com/api";
 
 interface CacheEntry {
@@ -40,11 +42,14 @@ function buildUrl(path: string, version: string): string {
   return `${BASE}/${version}${clean}`;
 }
 
+const PROVIDER = "mlb-stats-api";
+
 async function doFetch<T>(url: string, timeout: number, retries: number): Promise<T> {
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
+    const start = Date.now();
     try {
       const res = await fetch(url, {
         signal: controller.signal,
@@ -54,17 +59,22 @@ async function doFetch<T>(url: string, timeout: number, retries: number): Promis
       if (!res.ok) {
         // 4xx are not retried; 5xx are.
         if (res.status < 500 || attempt === retries) {
+          recordFailure(PROVIDER);
           throw new MlbApiError(`MLB API ${res.status} for ${url}`, res.status, url);
         }
         throw new MlbApiError(`MLB API ${res.status}`, res.status, url);
       }
-      return (await res.json()) as T;
+      const json = (await res.json()) as T;
+      recordSuccess(PROVIDER, Date.now() - start);
+      return json;
     } catch (err) {
       clearTimeout(timer);
       lastErr = err;
       if (err instanceof MlbApiError && err.status && err.status < 500) throw err;
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, 250 * 2 ** attempt));
+      } else {
+        recordFailure(PROVIDER);
       }
     }
   }

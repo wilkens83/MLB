@@ -4,9 +4,12 @@ import { useMemo, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Loader2, SlidersHorizontal, BarChart3, Dice5, Activity, Home, Plane } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Badge, Skeleton, StatPill } from "@/components/ui/primitives";
+import { Skeleton, StatPill } from "@/components/ui/primitives";
 import { RecommendationCard } from "./recommendation-card";
 import { HitRateTable } from "./hit-rate-table";
+import { BreakdownCard } from "./breakdown-card";
+import { QualityStrip, WarningList } from "./quality-strip";
+import { BatterStatcastPanel, PitcherStatcastPanel } from "./statcast-panel";
 import { GameLogBars } from "@/components/charts/game-log-bars";
 import { DistributionChart } from "@/components/charts/distribution-chart";
 import { RollingTrend } from "@/components/charts/rolling-trend";
@@ -180,11 +183,14 @@ export function PropDashboard({
 
       {analysis && (
         <>
-          {data?.meta && data.meta.sampleSize < 4 && (
-            <Badge variant="warning">
-              Small sample ({data.meta.sampleSize} games) — projection regressed to prior.
-            </Badge>
+          {data?.dataQuality && (
+            <QualityStrip
+              quality={data.dataQuality}
+              lastUpdated={data.lastUpdated}
+              opponentPitcher={data.opponent?.pitcherName}
+            />
           )}
+          {data?.warnings && data.warnings.length > 0 && <WarningList warnings={data.warnings} />}
 
           <div className="grid gap-5 lg:grid-cols-3">
             <div className="lg:col-span-1">
@@ -214,6 +220,27 @@ export function PropDashboard({
               </div>
             </Card>
           </div>
+
+          {data?.breakdown && (
+            <BreakdownCard breakdown={data.breakdown} unit={prop.shortLabel} modeledBy={analysis.modeledBy} />
+          )}
+
+          {data?.statcast && (
+            <div className="grid gap-5 lg:grid-cols-2">
+              {prop.category === "pitcher" ? (
+                <PitcherStatcastPanel pitcher={data.statcast.pitcher} season={data.meta.season} title={`${data.player?.name ?? "Pitcher"} · Statcast`} />
+              ) : (
+                <>
+                  <BatterStatcastPanel batter={data.statcast.batter} season={data.meta.season} />
+                  <PitcherStatcastPanel
+                    pitcher={data.statcast.pitcher}
+                    season={data.meta.season}
+                    title={data.opponent?.pitcherName ? `Opp: ${data.opponent.pitcherName}` : "Opposing pitcher"}
+                  />
+                </>
+              )}
+            </div>
+          )}
 
           <div className="grid gap-5 lg:grid-cols-2">
             <Card>

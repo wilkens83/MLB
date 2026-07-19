@@ -15,11 +15,10 @@ async function shoot(path, file, { wait = 1500, theme = "dark", w = 1440, h = 10
   await ctx.close();
 }
 
-await shoot("/", "home-dark.png");
-await shoot("/", "home-light.png", { theme: "light" });
-await shoot("/players/592450", "player-dark.png", { wait: 3500 });
-await shoot("/games", "games-dark.png");
-await shoot("/games/822786", "game-dark.png", { wait: 2500 });
+await shoot("/players/592450", "p2-player-batter.png", { wait: 4000 });
+await shoot("/players/694973", "p2-player-pitcher.png", { wait: 4000 });
+await shoot("/health", "p2-health.png", { wait: 2000 });
+await shoot("/players/592450", "p2-player-mobile.png", { wait: 4000, w: 390, h: 844 });
 
 await browser.close();
 console.log("done");
