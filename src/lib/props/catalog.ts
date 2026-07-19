@@ -217,6 +217,18 @@ export const PROP_CATALOG: PropDef[] = [
     statKeys: ["baseOnBalls"],
   },
   {
+    key: "batter_strikeouts",
+    label: "Batter Strikeouts",
+    shortLabel: "K",
+    category: "batter",
+    family: "poisson",
+    defaultLine: 0.5,
+    step: 0.5,
+    unit: "K",
+    description: "Times the batter strikes out.",
+    statKeys: ["strikeOuts"],
+  },
+  {
     key: "steals",
     label: "Stolen Bases",
     shortLabel: "SB",

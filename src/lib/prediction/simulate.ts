@@ -151,6 +151,50 @@ export function simulate(
   };
 }
 
+/**
+ * Summarize an array of simulated per-game outcomes into a SimulationResult
+ * against a line. Used by model-based simulators (e.g. the plate-appearance
+ * engine) whose empirical samples ARE the model — no analytic CDF blend.
+ */
+export function summarizeSamples(
+  samples: number[],
+  line: number,
+  family: DistFamily = "negbinom",
+): SimulationResult {
+  const n = samples.length || 1;
+  let over = 0;
+  let push = 0;
+  const counts = new Map<number, number>();
+  for (const s of samples) {
+    if (s > line) over++;
+    else if (s === line) push++;
+    if (family !== "normal") counts.set(s, (counts.get(s) ?? 0) + 1);
+  }
+  const probOver = clamp(over / n, 0, 1);
+  const maxK = Math.max(...counts.keys(), Math.ceil(line) + 1);
+  const distribution: DistributionBucket[] =
+    family === "normal"
+      ? histogram(samples, 16)
+      : Array.from({ length: maxK + 1 }, (_, k) => ({
+          value: k,
+          probability: round((counts.get(k) ?? 0) / n, 4),
+        }));
+  return {
+    iterations: samples.length,
+    mean: round(arrMean(samples), 3),
+    median: round(quantile(samples, 0.5), 3),
+    stdDev: round(arrStdDev(samples), 3),
+    probOver: round(probOver, 4),
+    probUnder: round(1 - probOver - push / n, 4),
+    probPush: round(push / n, 4),
+    line,
+    ci80: [round(quantile(samples, 0.1), 2), round(quantile(samples, 0.9), 2)],
+    ci95: [round(quantile(samples, 0.025), 2), round(quantile(samples, 0.975), 2)],
+    distribution,
+    family,
+  };
+}
+
 function negBinomCdf(k: number, mu: number, size: number): number {
   let sum = 0;
   for (let i = 0; i <= Math.floor(k); i++) sum += negBinomPmf(i, mu, size);
