@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Zap, MapPin } from "lucide-react";
 import { getGame } from "@/lib/mlb/api";
 import { TeamLogo } from "@/components/team-logo";
+import { PlayerAvatar } from "@/components/player-avatar";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/primitives";
 import { parkFactor } from "@/lib/mlb/context";
@@ -92,19 +93,23 @@ function PitcherCard({ side, label }: { side: GameTeamSide; label: string }) {
   const p = side.probablePitcher;
   return (
     <Card className="p-5">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted">{label}</div>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">{label}</div>
       {p ? (
-        <Link href={`/players/${p.id}`} className="group mt-2 flex items-center justify-between">
-          <div>
-            <div className="text-lg font-bold group-hover:text-brand-500">{p.fullName}</div>
-            <div className="text-sm text-muted">{side.team.name}</div>
+        <Link href={`/players/${p.id}/analysis`} className="group mt-3 flex items-center gap-3">
+          <PlayerAvatar playerId={p.id} name={p.fullName} teamId={side.team.id} size="lg" shape="rounded" />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-lg font-bold group-hover:text-brand-500">{p.fullName}</div>
+            <div className="truncate text-sm text-muted">{side.team.name}</div>
           </div>
           <span className="flex items-center gap-1 text-sm font-medium text-brand-500 opacity-0 transition-opacity group-hover:opacity-100">
-            <Zap className="h-4 w-4" /> K props
+            <Zap className="h-4 w-4" aria-hidden /> Analyze
           </span>
         </Link>
       ) : (
-        <div className="mt-2 text-lg font-semibold text-muted-2">TBD</div>
+        <div className="mt-3 flex items-center gap-3">
+          <PlayerAvatar name="TBD" size="lg" shape="rounded" />
+          <div className="text-lg font-semibold text-muted-2">Not confirmed</div>
+        </div>
       )}
     </Card>
   );

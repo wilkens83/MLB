@@ -1,15 +1,16 @@
 @import "tailwindcss";
 
 /* ============================================================================
-   DIAMOND — MLB Player Props Analytics Platform
-   Design system: luxury black + orange, glassmorphism, dual theme.
-   Tailwind v4 CSS-first configuration.
+   DIAMOND EDGE — MLB player-props analytics terminal
+   Professional graphite design system. Tailwind v4 CSS-first config.
+   Calm, dense, readable for long analytical sessions. Orange used as a
+   restrained accent, not decoration.
    ========================================================================== */
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  /* Brand — molten orange */
+  /* Brand — restrained orange accent */
   --brand-50: #fff7ed;
   --brand-100: #ffedd5;
   --brand-200: #fed7aa;
@@ -21,58 +22,81 @@
   --brand-800: #9a3412;
   --brand-900: #7c2d12;
 
-  /* Semantic (light theme defaults) */
-  --background: #f7f7f8;
+  /* ---- Light theme ---- */
+  --background: #f4f5f7;
+  --background-elevated: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f2f2f4;
-  --surface-glass: rgba(255, 255, 255, 0.7);
-  --surface-glass-border: rgba(15, 15, 20, 0.08);
-  --foreground: #0b0b0f;
-  --muted: #6b7280;
-  --muted-2: #9ca3af;
-  --border: rgba(15, 15, 20, 0.1);
+  --surface-2: #eef0f3;
+  --surface-hover: #e9ebef;
+  --surface-active: #e2e5ea;
+  --surface-glass: rgba(255, 255, 255, 0.75);
+  --surface-glass-border: rgba(15, 18, 24, 0.1);
+  --foreground: #0d0f13;
+  --text-secondary: #3f4650;
+  --muted: #626a76;
+  --muted-2: #9aa1ad;
+  --border: rgba(15, 18, 24, 0.1);
+  --border-strong: rgba(15, 18, 24, 0.16);
   --ring: var(--brand-500);
 
   --accent: var(--brand-500);
+  --accent-hover: var(--brand-600);
   --accent-foreground: #ffffff;
 
-  --positive: #16a34a;
-  --negative: #dc2626;
-  --warning: #d97706;
-  --info: #2563eb;
+  --positive: #17914b;
+  --negative: #d23b3b;
+  --warning: #c07808;
+  --information: #2563eb;
+  --info: var(--information);
 
-  --radius: 0.9rem;
-  --shadow-glow: 0 0 0 1px rgba(249, 115, 22, 0.14), 0 8px 40px -12px rgba(249, 115, 22, 0.35);
+  --radius: 0.75rem;
+  --shadow-glow: 0 1px 2px rgba(15, 18, 24, 0.06), 0 8px 24px -16px rgba(15, 18, 24, 0.4);
 }
 
 .dark {
-  --background: #050506;
-  --surface: #0c0c10;
-  --surface-2: #131318;
-  --surface-glass: rgba(18, 18, 24, 0.55);
-  --surface-glass-border: rgba(255, 255, 255, 0.08);
-  --foreground: #f5f5f7;
-  --muted: #9a9aa6;
-  --muted-2: #6b6b78;
-  --border: rgba(255, 255, 255, 0.09);
+  /* ---- Dark theme: deep graphite / charcoal ---- */
+  --background: #0a0b0e;
+  --background-elevated: #101216;
+  --surface: #131519;
+  --surface-2: #1a1d23;
+  --surface-hover: #20242b;
+  --surface-active: #262b33;
+  --surface-glass: rgba(20, 23, 28, 0.72);
+  --surface-glass-border: rgba(255, 255, 255, 0.07);
+  --foreground: #f2f4f7;
+  --text-secondary: #b6bcc6;
+  --muted: #8b93a0;
+  --muted-2: #5f6773;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
   --ring: var(--brand-500);
 
-  --positive: #22c55e;
-  --negative: #ef4444;
-  --warning: #f59e0b;
-  --info: #3b82f6;
+  --accent: var(--brand-500);
+  --accent-hover: var(--brand-400);
+  --accent-foreground: #ffffff;
 
-  --shadow-glow: 0 0 0 1px rgba(249, 115, 22, 0.18), 0 10px 60px -12px rgba(249, 115, 22, 0.45);
+  --positive: #34c759;
+  --negative: #ff5a52;
+  --warning: #f5a623;
+  --information: #3b82f6;
+  --info: var(--information);
+
+  --shadow-glow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px -18px rgba(0, 0, 0, 0.8);
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-background-elevated: var(--background-elevated);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-active: var(--surface-active);
   --color-foreground: var(--foreground);
+  --color-text-secondary: var(--text-secondary);
   --color-muted: var(--muted);
   --color-muted-2: var(--muted-2);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-ring: var(--ring);
 
   --color-brand-50: var(--brand-50);
@@ -87,31 +111,27 @@
   --color-brand-900: var(--brand-900);
 
   --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
   --color-accent-foreground: var(--accent-foreground);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
   --color-warning: var(--warning);
+  --color-information: var(--information);
   --color-info: var(--info);
 
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 0.4rem);
-  --radius-2xl: calc(var(--radius) + 0.8rem);
+  --radius-xl: calc(var(--radius) + 0.35rem);
+  --radius-2xl: calc(var(--radius) + 0.65rem);
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
-  --animate-shimmer: shimmer 2.2s linear infinite;
-  --animate-pulse-glow: pulse-glow 2.4s ease-in-out infinite;
+  --animate-shimmer: shimmer 1.8s linear infinite;
 }
 
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
-}
-
-@keyframes pulse-glow {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
 }
 
 * {
@@ -128,45 +148,50 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  font-feature-settings: "cv01", "ss01";
 }
 
-/* Ambient background glow layer */
+/* Tabular numerals everywhere numbers are shown as data. */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+
+/* Ambient background — very subtle, no heavy glow. */
 .app-aurora {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(60rem 40rem at 85% -10%, rgba(249, 115, 22, 0.14), transparent 60%),
-    radial-gradient(50rem 40rem at 0% 10%, rgba(234, 88, 12, 0.08), transparent 55%);
+    radial-gradient(48rem 30rem at 100% -10%, rgba(249, 115, 22, 0.05), transparent 60%);
 }
 .dark .app-aurora {
   background:
-    radial-gradient(60rem 40rem at 85% -10%, rgba(249, 115, 22, 0.16), transparent 60%),
-    radial-gradient(52rem 42rem at -5% 5%, rgba(124, 45, 18, 0.22), transparent 55%);
+    radial-gradient(52rem 34rem at 100% -12%, rgba(249, 115, 22, 0.06), transparent 60%),
+    radial-gradient(40rem 30rem at -8% 0%, rgba(255, 255, 255, 0.015), transparent 55%);
 }
 
-/* Glass surface utilities */
+/* Glass — reserved for elevated surfaces only. */
 @utility glass {
-  background: var(--surface-glass);
-  border: 1px solid var(--surface-glass-border);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  background: var(--surface);
+  border: 1px solid var(--border);
 }
 
 @utility glass-strong {
-  background: color-mix(in oklab, var(--surface) 82%, transparent);
-  border: 1px solid var(--surface-glass-border);
-  backdrop-filter: blur(24px) saturate(150%);
-  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  background: color-mix(in oklab, var(--background-elevated) 92%, transparent);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
 }
 
-/* Text gradient for hero accents */
+/* Elevated panel utility. */
+@utility panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* Brand text accent (used sparingly). */
 @utility text-gradient-brand {
-  background: linear-gradient(100deg, var(--brand-400), var(--brand-600));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  color: var(--brand-500);
 }
 
 /* Shimmer skeleton */
@@ -174,7 +199,7 @@ body {
   background: linear-gradient(
     90deg,
     var(--surface-2) 0%,
-    color-mix(in oklab, var(--surface-2) 60%, var(--brand-500) 8%) 50%,
+    color-mix(in oklab, var(--surface-2) 70%, var(--surface-hover)) 50%,
     var(--surface-2) 100%
   );
   background-size: 200% 100%;
@@ -184,17 +209,17 @@ body {
 /* Scrollbars */
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--muted-2) transparent;
+  scrollbar-color: var(--surface-active) transparent;
 }
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb {
-  background: var(--muted-2);
+  background: var(--surface-active);
   border-radius: 999px;
 }
 *::-webkit-scrollbar-track { background: transparent; }
 
-/* Focus ring */
-:where(a, button, input, select, [tabindex]):focus-visible {
+/* Focus ring — always visible for keyboard users. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: 6px;
