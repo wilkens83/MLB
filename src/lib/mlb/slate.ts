@@ -5,8 +5,9 @@
    projected hitters from each team's most recent completed lineup.
    ========================================================================== */
 
-import { getTodaysGames, getSchedule, getProjectedLineup, type LineupHitter } from "./api";
+import { getTodaysGames, getSchedule, getGame, getProjectedLineup, type LineupHitter } from "./api";
 import { mapGame } from "@/lib/providers/mlbStats";
+import type { GameEntity } from "@/lib/domain/models";
 
 export interface SlatePlayer {
   id: number;
@@ -95,46 +96,52 @@ function hitterPlayers(
   }));
 }
 
+/** Build the slate node (game + projected players) for a single game entity. */
+export async function buildSlateGameNode(g: GameEntity): Promise<SlateGameNode> {
+  const [homeLineup, awayLineup] = await Promise.all([
+    getProjectedLineup(g.home.teamId).catch(() => []),
+    getProjectedLineup(g.away.teamId).catch(() => []),
+  ]);
+
+  const players: SlatePlayer[] = [];
+  const awayP = pitcherPlayer(
+    g.away.probablePitcherId ? { id: g.away.probablePitcherId, name: g.away.probablePitcherName ?? "TBD" } : undefined,
+    g.away.teamId, g.away.teamName, g.home.teamId, g.home.teamName, g.gamePk, g.venueName, false,
+  );
+  const homeP = pitcherPlayer(
+    g.home.probablePitcherId ? { id: g.home.probablePitcherId, name: g.home.probablePitcherName ?? "TBD" } : undefined,
+    g.home.teamId, g.home.teamName, g.away.teamId, g.away.teamName, g.gamePk, g.venueName, true,
+  );
+  if (awayP) players.push(awayP);
+  if (homeP) players.push(homeP);
+  players.push(
+    ...hitterPlayers(awayLineup, g.away.teamId, g.away.teamName, g.home.teamId, g.home.teamName, g.gamePk, g.venueName, false),
+    ...hitterPlayers(homeLineup, g.home.teamId, g.home.teamName, g.away.teamId, g.away.teamName, g.gamePk, g.venueName, true),
+  );
+
+  return {
+    gamePk: g.gamePk,
+    date: g.date,
+    state: g.state,
+    detailedState: g.detailedState,
+    venueName: g.venueName,
+    home: { teamId: g.home.teamId, teamName: g.home.teamName },
+    away: { teamId: g.away.teamId, teamName: g.away.teamName },
+    players,
+  };
+}
+
+/** Fetch a single game and build its slate node (used by the market view). */
+export async function buildSlateGame(gamePk: number): Promise<SlateGameNode | null> {
+  const raw = await getGame(gamePk);
+  if (!raw) return null;
+  return buildSlateGameNode(mapGame(raw));
+}
+
 export async function buildSlate(dateIso?: string): Promise<Slate> {
   const rawGames = dateIso ? await getSchedule(dateIso) : await getTodaysGames();
   const games = rawGames.map(mapGame);
   const date = dateIso ?? new Date().toISOString().slice(0, 10);
-
-  const nodes = await Promise.all(
-    games.map(async (g): Promise<SlateGameNode> => {
-      const [homeLineup, awayLineup] = await Promise.all([
-        getProjectedLineup(g.home.teamId).catch(() => []),
-        getProjectedLineup(g.away.teamId).catch(() => []),
-      ]);
-
-      const players: SlatePlayer[] = [];
-      const awayP = pitcherPlayer(
-        g.away.probablePitcherId ? { id: g.away.probablePitcherId, name: g.away.probablePitcherName ?? "TBD" } : undefined,
-        g.away.teamId, g.away.teamName, g.home.teamId, g.home.teamName, g.gamePk, g.venueName, false,
-      );
-      const homeP = pitcherPlayer(
-        g.home.probablePitcherId ? { id: g.home.probablePitcherId, name: g.home.probablePitcherName ?? "TBD" } : undefined,
-        g.home.teamId, g.home.teamName, g.away.teamId, g.away.teamName, g.gamePk, g.venueName, true,
-      );
-      if (awayP) players.push(awayP);
-      if (homeP) players.push(homeP);
-      players.push(
-        ...hitterPlayers(awayLineup, g.away.teamId, g.away.teamName, g.home.teamId, g.home.teamName, g.gamePk, g.venueName, false),
-        ...hitterPlayers(homeLineup, g.home.teamId, g.home.teamName, g.away.teamId, g.away.teamName, g.gamePk, g.venueName, true),
-      );
-
-      return {
-        gamePk: g.gamePk,
-        date: g.date,
-        state: g.state,
-        detailedState: g.detailedState,
-        venueName: g.venueName,
-        home: { teamId: g.home.teamId, teamName: g.home.teamName },
-        away: { teamId: g.away.teamId, teamName: g.away.teamName },
-        players,
-      };
-    }),
-  );
-
+  const nodes = await Promise.all(games.map((g) => buildSlateGameNode(g)));
   return { date, games: nodes, generatedAt: Date.now() };
 }

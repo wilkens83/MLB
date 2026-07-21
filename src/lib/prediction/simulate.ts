@@ -201,6 +201,25 @@ function negBinomCdf(k: number, mu: number, size: number): number {
   return Math.min(1, sum);
 }
 
+/**
+ * Fast closed-form P(X > line) for a projection, without running Monte Carlo.
+ * Used by the market-card grid where we screen many players cheaply; the full
+ * 10k simulation runs on the detail/workspace views.
+ */
+export function analyticOverProb(proj: Projection, line: number): number {
+  if (proj.family === "bernoulli") return line < 1 ? clamp(proj.lambda, 0, 1) : 0;
+  if (proj.family === "normal") {
+    const sigma = Math.max(1, Math.sqrt(Math.max(proj.lambda, 1)) * 1.3);
+    return clamp(1 - normalCdf(line, proj.lambda, sigma), 0, 1);
+  }
+  const k = Math.floor(line);
+  const cdf =
+    proj.family === "poisson"
+      ? poissonCdf(k, proj.lambda)
+      : negBinomCdf(k, proj.lambda, proj.dispersion ?? 20);
+  return clamp(1 - cdf, 0, 1);
+}
+
 function histogram(xs: number[], bins: number): DistributionBucket[] {
   if (xs.length === 0) return [];
   const min = Math.min(...xs);

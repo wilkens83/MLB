@@ -50,6 +50,7 @@ const EXTRACTORS: Record<string, Extractor> = {
   earned_runs: (s) => s.earnedRuns ?? 0,
   hits_allowed: (s) => s.hits ?? 0,
   pitcher_walks: (s) => s.baseOnBalls ?? 0,
+  home_runs_allowed: (s) => s.homeRuns ?? 0,
   // batter
   hits: (s) => s.hits ?? 0,
   home_runs: (s) => s.homeRuns ?? 0,

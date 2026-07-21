@@ -84,7 +84,7 @@ export const PROP_CATALOG: PropDef[] = [
   },
   {
     key: "pitcher_walks",
-    label: "Pitcher Walks",
+    label: "Walks Allowed",
     shortLabel: "BB",
     category: "pitcher",
     family: "poisson",
@@ -93,6 +93,18 @@ export const PROP_CATALOG: PropDef[] = [
     unit: "BB",
     description: "Walks issued by the pitcher.",
     statKeys: ["baseOnBalls"],
+  },
+  {
+    key: "home_runs_allowed",
+    label: "Home Runs Allowed",
+    shortLabel: "HRA",
+    category: "pitcher",
+    family: "poisson",
+    defaultLine: 0.5,
+    step: 0.5,
+    unit: "HR",
+    description: "Home runs allowed by the pitcher.",
+    statKeys: ["homeRuns"],
   },
 
   // ---- Batter ----
