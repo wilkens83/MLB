@@ -34,7 +34,7 @@ export function TeamLogo({
         <span className="text-[10px] font-bold text-muted">{initials(name)}</span>
       ) : (
         <img
-          src={`https://www.mlbstatic.com/team-logos/${teamId}.svg`}
+          src={`/api/team-logo/${teamId}`}
           alt={name}
           width={size}
           height={size}

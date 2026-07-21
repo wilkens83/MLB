@@ -1,7 +1,8 @@
 "use client";
 
-import { TrendingUp, TrendingDown, Minus, Plus, Check } from "lucide-react";
-import { PlayerHeadshot } from "@/components/player-headshot";
+import { TrendingUp, TrendingDown, Minus, Plus, Check, BarChart3 } from "lucide-react";
+import { PlayerAvatar } from "@/components/player-avatar";
+import { DataQualityBadge, LineupStatusBadge } from "@/components/ui/data-badges";
 import { cn, pct } from "@/lib/utils";
 import { useWorkspace } from "./workspace-store";
 import type { MarketCard as CardData } from "@/lib/mlb/market";
@@ -31,30 +32,33 @@ export function MarketCard({ card }: { card: CardData }) {
   const TrendIcon = card.trend === "up" ? TrendingUp : card.trend === "down" ? TrendingDown : Minus;
   const trendColor =
     card.trend === "up" ? "text-[var(--positive)]" : card.trend === "down" ? "text-[var(--negative)]" : "text-muted";
-  const dqColor =
-    card.dataQuality >= 70 ? "text-[var(--positive)]" : card.dataQuality >= 45 ? "text-[var(--warning)]" : "text-[var(--negative)]";
 
   return (
-    <div className={cn("glass rounded-2xl p-4 transition-shadow", selected && "ring-1 ring-brand-500/50")}>
+    <div
+      className={cn(
+        "panel p-4 transition-colors hover:border-border-strong",
+        selected && "border-brand-500/50 ring-1 ring-brand-500/40",
+      )}
+    >
       <div className="flex items-start gap-3">
-        <a href={`/players/${card.playerId}/analysis`}>
-          <PlayerHeadshot playerId={card.playerId} name={card.name} size={44} />
+        <a href={`/players/${card.playerId}/analysis`} aria-label={`Full analysis for ${card.name}`}>
+          <PlayerAvatar playerId={card.playerId} name={card.name} teamId={card.teamId} size="md" shape="rounded" />
         </a>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <a href={`/players/${card.playerId}/analysis`} className="truncate font-semibold hover:text-brand-500">
+            {card.battingOrder && (
+              <span className="rounded bg-surface-2 px-1 text-[10px] font-bold tabular-nums text-muted">{card.battingOrder}</span>
+            )}
+            <a href={`/players/${card.playerId}/analysis`} className="truncate font-semibold leading-tight hover:text-brand-500">
               {card.name}
             </a>
-            {card.battingOrder && (
-              <span className="rounded bg-surface-2 px-1 text-[10px] font-bold text-muted">#{card.battingOrder}</span>
-            )}
           </div>
           <div className="truncate text-xs text-muted">
             {card.position} · {card.teamName} {card.isHome ? "vs" : "@"} {abbr(card.opponentName)}
           </div>
         </div>
-        <span className={cn("flex items-center gap-1 text-xs font-medium", trendColor)}>
-          <TrendIcon className="h-3.5 w-3.5" />
+        <span className={cn("flex items-center gap-1 text-xs font-medium", trendColor)} title={`Trend ${card.trend}`}>
+          <TrendIcon className="h-3.5 w-3.5" aria-hidden />
         </span>
       </div>
 
@@ -88,9 +92,12 @@ export function MarketCard({ card }: { card: CardData }) {
         ))}
       </div>
 
-      <div className="mt-3 flex items-center justify-between">
-        <span className={cn("text-[11px] font-medium", dqColor)}>DQ {card.dataQuality}</span>
-        <span className="text-[10px] text-muted-2">{card.sampleSize} G</span>
+      <div className="mt-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5">
+          <DataQualityBadge score={card.dataQuality} />
+          <LineupStatusBadge status={card.lineupStatus} />
+        </div>
+        <span className="text-[10px] tabular-nums text-muted-2">{card.sampleSize} G</span>
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-2">
@@ -98,15 +105,21 @@ export function MarketCard({ card }: { card: CardData }) {
           onClick={() => addSide("over")}
           className="flex items-center justify-center gap-1 rounded-lg bg-[var(--positive)]/12 py-1.5 text-xs font-semibold text-[var(--positive)] transition-colors hover:bg-[var(--positive)]/20"
         >
-          {selected ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />} Over
+          {selected ? <Check className="h-3 w-3" aria-hidden /> : <Plus className="h-3 w-3" aria-hidden />} Analyze Over
         </button>
         <button
           onClick={() => addSide("under")}
           className="flex items-center justify-center gap-1 rounded-lg bg-[var(--negative)]/12 py-1.5 text-xs font-semibold text-[var(--negative)] transition-colors hover:bg-[var(--negative)]/20"
         >
-          {selected ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />} Under
+          {selected ? <Check className="h-3 w-3" aria-hidden /> : <Plus className="h-3 w-3" aria-hidden />} Analyze Under
         </button>
       </div>
+      <a
+        href={`/players/${card.playerId}/analysis`}
+        className="mt-2 flex items-center justify-center gap-1 rounded-lg border border-border py-1.5 text-xs font-medium text-muted transition-colors hover:bg-surface-hover hover:text-foreground"
+      >
+        <BarChart3 className="h-3 w-3" aria-hidden /> View Full Analysis
+      </a>
     </div>
   );
 }

@@ -6,7 +6,8 @@ import { Loader2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Skeleton, StatPill } from "@/components/ui/primitives";
 import { TeamLogo } from "@/components/team-logo";
-import { PlayerHeadshot } from "@/components/player-headshot";
+import { PlayerAvatar } from "@/components/player-avatar";
+import { LineupStatusBadge } from "@/components/ui/data-badges";
 import { RecommendationCard } from "@/components/prop/recommendation-card";
 import { HitRateTable } from "@/components/prop/hit-rate-table";
 import { BreakdownCard } from "@/components/prop/breakdown-card";
@@ -255,35 +256,47 @@ function Header({
   const player = data?.player;
   const opp = data?.opponent;
   return (
-    <div className="glass flex flex-wrap items-center gap-4 rounded-2xl p-5">
-      <PlayerHeadshot playerId={playerId} name={player?.name ?? "Player"} size={72} />
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <h2 className="truncate text-2xl font-black tracking-tight">{player?.name ?? "Loading…"}</h2>
-          {context?.battingOrder && (
-            <span className="rounded-full bg-brand-500/12 px-2 py-0.5 text-xs font-semibold text-brand-500">
-              #{context.battingOrder}
+    <div className="panel relative overflow-hidden p-5">
+      <div className="flex flex-wrap items-start gap-4 sm:flex-nowrap">
+        <PlayerAvatar
+          playerId={playerId}
+          name={player?.name ?? "Player"}
+          teamId={context?.teamId}
+          size="xl"
+          shape="rounded"
+          className="h-24 w-24 sm:h-[132px] sm:w-[132px]"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            {context?.battingOrder && (
+              <span className="grid h-6 w-6 place-items-center rounded-md bg-brand-500/15 text-xs font-bold tabular-nums text-brand-500">
+                {context.battingOrder}
+              </span>
+            )}
+            <h2 className="truncate text-[26px] font-black leading-none tracking-tight">{player?.name ?? "Loading…"}</h2>
+            {context?.teamId && <TeamLogo teamId={context.teamId} name={context.teamName ?? ""} size={26} />}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
+            <span className="font-medium text-text-secondary">{context?.position || player?.position}</span>
+            <span className="text-muted-2">·</span>
+            <span>{player?.team || context?.teamName}</span>
+            {player?.bats && <span className="text-muted-2">· Bats {player.bats}</span>}
+            {player?.throws && <span className="text-muted-2">· Throws {player.throws}</span>}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {context?.lineupStatus && <LineupStatusBadge status={context.lineupStatus} />}
+            <span className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-0.5 text-xs text-muted">
+              {isPitcher
+                ? `Facing ${opp?.opponentTeam ?? context?.opponentName ?? "opponent"}`
+                : `vs ${opp?.pitcherName ?? "TBD starter"}`}
             </span>
-          )}
+            {(opp?.venueName || context?.venueName) && (
+              <span className="inline-flex items-center gap-1 rounded-md border border-border bg-surface-2 px-2 py-0.5 text-xs text-muted">
+                {opp?.venueName || context?.venueName}
+              </span>
+            )}
+          </div>
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
-          <span>{context?.position || player?.position}</span>
-          <span className="text-muted-2">·</span>
-          <span>{player?.team || context?.teamName}</span>
-          {player?.bats && <span className="text-muted-2">· Bats {player.bats}</span>}
-          {player?.throws && <span className="text-muted-2">· Throws {player.throws}</span>}
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        {context?.teamId && <TeamLogo teamId={context.teamId} name={context.teamName ?? ""} size={40} />}
-        <span className="text-xs text-muted">{opp?.venueName || context?.venueName}</span>
-        {context?.opponentId && <TeamLogo teamId={context.opponentId} name={context.opponentName ?? ""} size={40} />}
-      </div>
-      <div className="w-full border-t border-border pt-3 text-xs text-muted">
-        {isPitcher
-          ? `Facing ${opp?.opponentTeam ?? context?.opponentName ?? "opponent"}`
-          : `vs ${opp?.pitcherName ?? "TBD starter"}`}
-        {context?.lineupStatus && ` · ${context.lineupStatus} lineup`}
       </div>
     </div>
   );
