@@ -18,6 +18,7 @@ import { RollingTrend } from "@/components/charts/rolling-trend";
 import { GameLogTable } from "./game-log-table";
 import { SplitsPanel } from "./splits-panel";
 import { MatchupPanel } from "./matchup-panel";
+import { PitchMixPanel } from "./pitch-mix-panel";
 import { propsByCategory, getProp } from "@/lib/props/catalog";
 import { cn, pct } from "@/lib/utils";
 import type { AnalysisPayload } from "@/lib/mlb/analysis";
@@ -35,7 +36,7 @@ export interface WorkbenchContext {
 }
 
 const TABS = [
-  "Overview", "Props", "Statcast", "Splits", "Game Logs", "Matchup", "Simulation", "Prediction",
+  "Overview", "Props", "Statcast", "Splits", "Game Logs", "Matchup", "Pitch Mix", "Simulation", "Prediction",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -201,6 +202,16 @@ export function PlayerWorkbench({
           {tab === "Game Logs" && <GameLogTable playerId={playerId} propKey={propKey} line={line} />}
 
           {tab === "Matchup" && <MatchupPanel data={data} batterHand={player?.bats} season={data.meta.season} />}
+
+          {tab === "Pitch Mix" &&
+            (isPitcher ? (
+              <PitchMixPanel pitcherId={playerId} title={`${player?.name ?? "Pitcher"} · Pitch Arsenal`} />
+            ) : (
+              <PitchMixPanel
+                pitcherId={data.opponent?.pitcherId}
+                title={data.opponent?.pitcherName ? `Opp: ${data.opponent.pitcherName} · Pitch Arsenal` : "Opposing pitcher · Pitch Arsenal"}
+              />
+            ))}
 
           {tab === "Simulation" && (
             <Card className="p-5">
