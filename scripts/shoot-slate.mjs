@@ -15,8 +15,6 @@ async function ctx(theme = "dark", w = 1440, h = 1024) {
   const page = await c.newPage();
   await page.goto(B + "/slate", { waitUntil: "networkidle", timeout: 40000 }).catch(() => {});
   await page.waitForTimeout(3000);
-  // click a projected hitter (rows in the expanded first game). Pick one with a batting order.
-  const playerBtns = page.locator("aside button").filter({ hasText: /.+/ });
   // Click the 3rd player row (skip pitchers) — index tuned to land on a hitter
   const rows = await page.locator("aside .border-l button").all();
   if (rows.length > 2) await rows[2].click();

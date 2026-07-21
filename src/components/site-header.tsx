@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Diamond, Activity, Users, LineChart, HeartPulse, LayoutGrid } from "lucide-react";
+import { Diamond, Activity, Users, LineChart, HeartPulse, LayoutGrid, Microscope } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
 import { PlayerSearch } from "./player-search";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: Activity },
+  { href: "/analyze", label: "Analyze", icon: Microscope },
   { href: "/slate", label: "Slate", icon: LayoutGrid },
   { href: "/games", label: "Games", icon: LineChart },
   { href: "/players", label: "Players", icon: Users },
