@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Diamond, Activity, CalendarDays, Microscope, LayoutGrid, Users, HeartPulse, X,
+  Diamond, Activity, CalendarDays, Microscope, LayoutGrid, Users, HeartPulse, X, ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +25,7 @@ const SECTIONS: { title: string; items: NavItem[] }[] = [
   {
     title: "Research",
     items: [
+      { href: "/prizepicks-board", label: "PrizePicks Board", icon: ClipboardList, match: (p) => p.startsWith("/prizepicks-board") },
       { href: "/analyze", label: "Prop Explorer", icon: Microscope, match: (p) => p.startsWith("/analyze") },
       { href: "/slate", label: "Player Analysis", icon: LayoutGrid, match: (p) => p.startsWith("/slate") },
       { href: "/players", label: "Players", icon: Users, match: (p) => p.startsWith("/players") },
