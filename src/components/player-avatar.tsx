@@ -33,6 +33,13 @@ export function PlayerAvatar({
 }) {
   const px = SIZE_PX[size];
   const [status, setStatus] = useState<"loading" | "loaded" | "error">(playerId ? "loading" : "error");
+  // Reset load status when the player id changes (e.g. an entry resolves from
+  // unresolved -> a real MLB id after mount). Derived-state during render.
+  const [shownId, setShownId] = useState(playerId);
+  if (playerId !== shownId) {
+    setShownId(playerId);
+    setStatus(playerId ? "loading" : "error");
+  }
   const radius = shape === "circle" ? "rounded-full" : "rounded-xl";
   const color = teamColor(teamId);
 
