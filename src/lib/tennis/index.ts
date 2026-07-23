@@ -9,4 +9,5 @@ import "./adapter"; // side effect: register tennis sport
 export * from "./domain";
 export * from "./providers";
 export * from "./data";
+export * from "./model";
 export { TENNIS_MARKETS, getTennisMarket } from "./domain/markets";
