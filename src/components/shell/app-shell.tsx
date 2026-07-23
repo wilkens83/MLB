@@ -2,14 +2,21 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Menu, Diamond } from "lucide-react";
 import { AppSidebar } from "./app-sidebar";
 import { DataHealthIndicator } from "./data-health-indicator";
 import { PlayerSearch } from "@/components/player-search";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { sportFromPathname, sportUi } from "@/lib/sports/nav";
+import { getSport } from "@/lib/sports/all";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
+  const sport = sportFromPathname(pathname);
+  const ui = sportUi(sport);
+  const sportLabel = getSport(sport)?.label ?? "MLB";
 
   return (
     <div className="min-h-screen">
@@ -25,18 +32,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           >
             <Menu className="h-5 w-5" />
           </button>
-          <Link href="/" className="flex items-center gap-1.5 lg:hidden">
+          <Link href={ui.home} className="flex items-center gap-1.5 lg:hidden">
             <span className="grid h-7 w-7 place-items-center rounded-md bg-brand-500 text-white">
               <Diamond className="h-4 w-4" strokeWidth={2.5} />
             </span>
           </Link>
 
           <div className="hidden min-w-0 flex-1 sm:block sm:max-w-md">
-            <PlayerSearch />
+            <PlayerSearch sport={sport} placeholder={ui.searchPlaceholder} />
           </div>
 
           <div className="ml-auto flex items-center gap-2">
-            <DataHealthIndicator />
+            <DataHealthIndicator href={sport === "tennis" ? "/tennis/data-health" : "/health"} />
             <ThemeToggle />
           </div>
         </header>
@@ -44,7 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-5 sm:px-6 sm:py-6">{children}</main>
 
         <footer className="border-t border-border px-6 py-5 text-center text-[11px] text-muted">
-          Diamond Edge · MLB analytics &amp; modeling for research. Not betting advice. 21+ · Please play responsibly.
+          Diamond Edge · {sportLabel} analytics &amp; modeling for research. Not betting advice. 21+ · Please play responsibly.
         </footer>
       </div>
     </div>

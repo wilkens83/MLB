@@ -27,8 +27,10 @@ registerSport({
   tagline: "ATP/WTA match & player-prop analytics — structural simulation + EV",
   basePath: "/tennis",
   icon: "Circle",
-  // Behind the flag until acquisition (Phases 4–5) + structural sim (Phase 6) are
-  // verified. Flipping this to true is the only change needed to surface tennis.
-  enabled: false,
+  // Acquisition (Phases 4–5), structural simulation (Phase 6) and the market
+  // engine (Phases 7–10) are verified, so tennis is now surfaced in the UI. The
+  // `/tennis/*` routes render the real engine's outputs where data exists and
+  // honest empty/degraded states where a live provider is not configured.
+  enabled: true,
   adapter: tennisAdapter,
 });

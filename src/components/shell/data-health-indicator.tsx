@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import type { ProviderHealth } from "@/lib/providers/types";
 
 /** Compact provider-health dot in the top bar. Reads the existing /api/health. */
-export function DataHealthIndicator() {
+export function DataHealthIndicator({ href = "/health" }: { href?: string }) {
   const { data } = useQuery({
     queryKey: ["health-mini"],
     queryFn: async () =>
@@ -26,7 +26,7 @@ export function DataHealthIndicator() {
 
   return (
     <Link
-      href="/health"
+      href={href}
       className="hidden items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs text-muted transition-colors hover:text-foreground sm:inline-flex"
       title="Provider data health"
     >
