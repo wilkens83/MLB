@@ -8,6 +8,7 @@ import { AppSidebar } from "./app-sidebar";
 import { DataHealthIndicator } from "./data-health-indicator";
 import { PlayerSearch } from "@/components/player-search";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SportTabs } from "./sport-tabs";
 import { sportFromPathname, sportUi } from "@/lib/sports/nav";
 import { getSport } from "@/lib/sports/all";
 
@@ -37,6 +38,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Diamond className="h-4 w-4" strokeWidth={2.5} />
             </span>
           </Link>
+
+          {/* Global sport tabs — MLB / Tennis, always visible in the navbar. */}
+          <SportTabs />
 
           <div className="hidden min-w-0 flex-1 sm:block sm:max-w-md">
             <PlayerSearch sport={sport} placeholder={ui.searchPlaceholder} />
