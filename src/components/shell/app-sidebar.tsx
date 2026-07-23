@@ -2,43 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Diamond, Activity, CalendarDays, Microscope, LayoutGrid, Users, HeartPulse, X, ClipboardList,
-} from "lucide-react";
+import { Diamond, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-
-interface NavItem {
-  href: string;
-  label: string;
-  icon: typeof Activity;
-  match: (p: string) => boolean;
-}
-
-const SECTIONS: { title: string; items: NavItem[] }[] = [
-  {
-    title: "Today",
-    items: [
-      { href: "/", label: "Dashboard", icon: Activity, match: (p) => p === "/" },
-      { href: "/games", label: "Today's Games", icon: CalendarDays, match: (p) => p.startsWith("/games") },
-    ],
-  },
-  {
-    title: "Research",
-    items: [
-      { href: "/prizepicks-board", label: "PrizePicks Board", icon: ClipboardList, match: (p) => p.startsWith("/prizepicks-board") },
-      { href: "/analyze", label: "Prop Explorer", icon: Microscope, match: (p) => p.startsWith("/analyze") },
-      { href: "/slate", label: "Player Analysis", icon: LayoutGrid, match: (p) => p.startsWith("/slate") },
-      { href: "/players", label: "Players", icon: Users, match: (p) => p.startsWith("/players") },
-    ],
-  },
-  {
-    title: "Tools",
-    items: [{ href: "/health", label: "Data Health", icon: HeartPulse, match: (p) => p.startsWith("/health") }],
-  },
-];
+import { sportFromPathname, sportUi } from "@/lib/sports/nav";
+import { SportSwitcher } from "./sport-switcher";
 
 export function AppSidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClose: () => void }) {
   const pathname = usePathname();
+  const sport = sportFromPathname(pathname);
+  const ui = sportUi(sport);
 
   return (
     <>
@@ -54,7 +26,7 @@ export function AppSidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClo
         )}
       >
         <div className="flex h-16 items-center gap-2 border-b border-border px-4">
-          <Link href="/" className="flex items-center gap-2" onClick={onClose}>
+          <Link href={ui.home} className="flex items-center gap-2" onClick={onClose}>
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-white">
               <Diamond className="h-4.5 w-4.5" strokeWidth={2.5} />
             </span>
@@ -68,10 +40,10 @@ export function AppSidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClo
         </div>
 
         <nav className="flex flex-col gap-5 p-3">
-          <div className="rounded-md border border-border bg-surface px-2.5 py-1.5 text-[11px] font-medium text-muted">
-            MLB · Player Props
-          </div>
-          {SECTIONS.map((section) => (
+          {/* Global sport switcher — replaces the old static "MLB · Player Props" chip. */}
+          <SportSwitcher onNavigate={onClose} />
+
+          {ui.sections.map((section) => (
             <div key={section.title}>
               <div className="px-2 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-2">
                 {section.title}
@@ -79,8 +51,24 @@ export function AppSidebar({ mobileOpen, onClose }: { mobileOpen: boolean; onClo
               <ul className="space-y-0.5">
                 {section.items.map((item) => {
                   const active = item.match(pathname);
+                  if (item.disabled) {
+                    return (
+                      <li key={item.label}>
+                        <div
+                          className="group relative flex cursor-not-allowed items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium text-muted-2"
+                          title="Coming soon"
+                        >
+                          <item.icon className="h-4 w-4" />
+                          {item.label}
+                          <span className="ml-auto rounded-full border border-border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-muted-2">
+                            Soon
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  }
                   return (
-                    <li key={item.href}>
+                    <li key={item.label}>
                       <Link
                         href={item.href}
                         onClick={onClose}

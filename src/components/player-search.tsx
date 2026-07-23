@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Loader2 } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
+import type { SportKey } from "@/lib/sports/types";
 
 interface PlayerHit {
   id: number;
@@ -22,13 +23,26 @@ function useDebounced<T>(value: T, ms: number) {
   return v;
 }
 
-export function PlayerSearch({ autoFocus = false }: { autoFocus?: boolean }) {
+export function PlayerSearch({
+  autoFocus = false,
+  sport = "mlb",
+  placeholder,
+}: {
+  autoFocus?: boolean;
+  sport?: SportKey;
+  placeholder?: string;
+}) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const debounced = useDebounced(q, 220);
   const router = useRouter();
   const boxRef = useRef<HTMLDivElement>(null);
+
+  // Tennis player search has no live provider wired in this environment. Rather
+  // than hit the MLB endpoint (or fabricate results), the tennis search is a
+  // clearly-labeled degraded state. MLB keeps its existing live search.
+  const searchable = sport === "mlb";
 
   const { data, isFetching } = useQuery({
     queryKey: ["player-search", debounced],
@@ -37,7 +51,7 @@ export function PlayerSearch({ autoFocus = false }: { autoFocus?: boolean }) {
       const json = (await res.json()) as { players: PlayerHit[] };
       return json.players ?? [];
     },
-    enabled: debounced.trim().length >= 2,
+    enabled: searchable && debounced.trim().length >= 2,
   });
 
   const results = data ?? [];
@@ -75,13 +89,24 @@ export function PlayerSearch({ autoFocus = false }: { autoFocus?: boolean }) {
             else if (e.key === "Enter" && results[active]) go(results[active]);
             else if (e.key === "Escape") setOpen(false);
           }}
-          placeholder="Search players…"
+          placeholder={placeholder ?? "Search players…"}
           className="w-full bg-transparent text-sm outline-none placeholder:text-muted-2"
         />
         {isFetching && <Loader2 className="h-4 w-4 animate-spin text-muted" />}
       </div>
 
-      {open && debounced.trim().length >= 2 && (
+      {open && debounced.trim().length >= 2 && !searchable && (
+        <div className="glass-strong absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-border shadow-xl">
+          <div className="px-3 py-3 text-sm text-muted">
+            <span className="font-medium text-foreground">Live Tennis provider not configured.</span>
+            <span className="mt-0.5 block text-xs text-muted-2">
+              Player search activates when a credentialed data source is connected.
+            </span>
+          </div>
+        </div>
+      )}
+
+      {open && debounced.trim().length >= 2 && searchable && (
         <div className="glass-strong absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-border shadow-xl">
           {results.length === 0 && !isFetching && (
             <div className="px-3 py-3 text-sm text-muted">No players found.</div>

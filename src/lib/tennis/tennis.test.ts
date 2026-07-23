@@ -21,11 +21,13 @@ import type { TennisPlayer } from "./domain";
 beforeEach(() => __resetHealth());
 
 describe("tennis sport registration", () => {
-  it("registers tennis behind the enabled flag", () => {
+  it("registers tennis as an enabled, UI-exposed sport", () => {
     const t = getSport("tennis");
     expect(t).toBeDefined();
     expect(t!.label).toBe("Tennis");
-    expect(t!.enabled).toBe(false); // gated until acquisition+sim verified
+    // Acquisition + structural sim + market engine are verified, so tennis is
+    // now exposed in the UI (the /tennis/* surface). See adapter.ts.
+    expect(t!.enabled).toBe(true);
     expect(t!.basePath).toBe("/tennis");
   });
 

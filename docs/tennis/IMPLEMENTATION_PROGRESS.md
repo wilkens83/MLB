@@ -40,12 +40,36 @@ protected computational core or the Phase 0–5 acquisition layer.
 
 Docs: `docs/tennis/SIMULATION_ENGINE.md`, `docs/tennis/PROJECTION_MODELS.md`.
 
+## Frontend shell (Phase 12) — COMPLETE
+Tennis is now a real, user-facing sport inside the SAME Diamond Edge app — a
+global sport switcher, a full `/tennis/*` route set, and honest data states. No
+second app, no duplicate backend; the shared shell renders per-sport from config.
+
+| Item | Status | Notes |
+|---|---|---|
+| Tennis exposed in registry | ✅ | `adapter.ts` `enabled:true`; `src/lib/sports/all.ts` guarantees both sports register in every bundle. |
+| Global sport switcher | ✅ | `components/shell/sport-switcher.tsx` — replaces the static "MLB · Player Props" chip; routes to `basePath`, remembers preference in localStorage, **routes stay authoritative**. |
+| Sport-aware shell/sidebar/search | ✅ | `lib/sports/nav.tsx` keys sidebar sections + search placeholder + home per `SportKey`; `sportFromPathname` resolves the active sport. No MLB terms in tennis nav. |
+| `/tennis` dashboard | ✅ | Hero "Find the edge in every Tennis player prop." + serve/return, surface, Elo, Monte Carlo, More/Less copy; adapted feature cards. |
+| `/tennis/board` | ✅ | PrizePicks board shell: tour/surface/market/sort/player filters; projection-card field list; **no fabricated projections** — degraded/empty states only. |
+| `/tennis/matches` (+ `[id]`) | ✅ | Today's Matches + Match Analysis scaffold (ranking/Elo/serve/return/form comparison); model section shows "Simulation engine pending". |
+| `/tennis/players` (+ `[id]`) | ✅ | Directory + player profile scaffold (profile/serve/return/form/Elo); identity-unresolved honesty. |
+| `/tennis/projections` (+ `[id]`) | ✅ | Prop Explorer over the real market catalog; per-market output-field list; model-unavailable state. |
+| `/tennis/data-health` | ✅ | Real provider readiness from `lib/tennis/status.ts` — every live provider "unconfigured" without keys, reported honestly. |
+| Honest data states | ✅ | `components/tennis/states.tsx`: loading, empty, provider-not-configured, degraded, historical-only, model-unavailable, identity-unresolved. Fixtures never used as production content. |
+
+Verified through the running app (`pnpm start`): MLB routes unchanged (hero,
+sidebar, search intact); `/tennis*` returns 200 (dashboard alias 307→`/tennis`,
+unknown market 404); switching MLB↔Tennis works. **168 tests pass** (86 MLB + 7
+sports + 28 acquisition + 47 model), `tsc --noEmit` clean, lint clean,
+production build clean. Protected MLB computational core untouched.
+
 ## Remaining (scoped, not built yet)
 | Phase | Deliverable | Status | Notes |
 |---|---|---|---|
-| 11 | Correlation from joint sims + entry builder | ⬜ | Simulator already emits joint samples; correlation extraction + builder deferred. |
-| 12 | Frontend `/tennis/*` | ⬜ | Engine is UI-ready; slate/match/player views deferred. |
-| 13 | Backtesting (temporal integrity) + observability | ⬜ | Elo + features are already leakage-safe; backtest harness deferred. |
+| 11 | Correlation from joint sims + entry builder | ⬜ | Simulator already emits joint samples; correlation extraction + builder deferred. Entry Builder shown as a disabled roadmap nav item. |
+| 12b | Live data wiring into `/tennis/*` | ⬜ | UI + acquisition facade are ready; blocked only on a credentialed provider key (server-side). Views flip from degraded to live automatically once `liveConfigured`. |
+| 13 | Backtesting (temporal integrity) + observability | ⬜ | Elo + features are already leakage-safe; Backtesting + Model Lab shown as disabled roadmap nav items. |
 
 ## Infrastructure reality (from audit §5)
 - No DB → historical imports target an abstracted `HistoricalStore` (file-backed first).
@@ -72,3 +96,12 @@ formula-injection · never call an unverified provider "production-verified".
   models, assessment + provenance). 47 engine tests incl. sanity scenarios A–E;
   168 total. Lint + tsc + production build clean; protected core + acquisition layer
   untouched. `SIMULATION_ENGINE.md` + `PROJECTION_MODELS.md` added.
+- 2026-07-23 — Phase 12 (frontend shell) complete: tennis is now exposed in the
+  UI via a global MLB/Tennis sport switcher, sport-aware shell/sidebar/search
+  (`lib/sports/nav.tsx`, `sports/all.ts`), and a full `/tennis/*` route set
+  (dashboard, board, matches+[id], players+[id], projections+[id], data-health)
+  with honest empty/degraded/model-unavailable states (`components/tennis/*`) and
+  a server-side provider-status surface (`lib/tennis/status.ts`). No fabricated
+  matches/props/probabilities; fixtures never used as production content. Tennis
+  `enabled` flipped to `true`; MLB experience unchanged. 168 tests pass; tsc +
+  lint + production build clean; verified through the running app.
