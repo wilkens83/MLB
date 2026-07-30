@@ -20,10 +20,17 @@ pnpm build          # production build (runs tsc typecheck)
 pnpm start          # serve the production build
 pnpm lint           # eslint (next lint / flat config)
 
+# Unit tests — colocated *.test.ts (math, odds, hitRate, engine, prizepicks,
+# sports, tennis, savantClient). Run under Bun's test runner:
+pnpm test                                       # bun test src (whole suite)
+bun test src/lib/math/stats.test.ts             # one file
+bun test src -t "no-vig"                         # filter by test name
+
 # Engine + data smoke tests (Bun runs pure logic; Node runs live-API tests):
 bun run scripts/verify-engine.ts                                   # pure math/engine checks
-NODE_EXTRA_CA_CERTS=$CA npx tsx --tsconfig tsconfig.json scripts/verify-data.ts  # live MLB pipeline
-node scripts/shoot.mjs                                             # Playwright screenshots
+NODE_EXTRA_CA_CERTS=$CA npx tsx --tsconfig tsconfig.json scripts/verify-data.ts     # live MLB pipeline
+NODE_EXTRA_CA_CERTS=$CA npx tsx --tsconfig tsconfig.json scripts/verify-statcast.ts # live Baseball Savant pipeline
+node scripts/shoot.mjs                                             # Playwright screenshots (also shoot-slate/-analyze/-prizepicks/-redesign)
 ```
 
 ### Sandbox networking gotcha
@@ -90,6 +97,51 @@ src/app/...                  Server components fetch via lib/mlb; client dashboa
 `getGameLog()` + `extractPropSeries()` + `buildContext()` → `analyzeProp()` →
 `{ projection, simulation, analytics, recommendation }` rendered by the
 recommendation card, distribution/hit-rate/game-log/rolling charts.
+
+## Subsystems layered on top of the MLB core
+
+The sections above describe the founding MLB engine. Four additive subsystems
+have since been built _around_ it without changing it — each stays in its own
+namespace and reuses the pure core.
+
+- **Provider registry (`src/lib/providers/`).** The single seam for data
+  sources: `mlbStats` (schedule/players/logs), `savantClient` + `statcast` +
+  `arsenal` (Baseball Savant pitch-level / Statcast, powering the pitch-mix and
+  arsenal panels), `park` (static park factors), and `health` (per-provider
+  liveness surfaced by the data-health indicator). Consumers import from
+  `providers/index.ts` and swap/mocks happen there — so "no API key needed"
+  now means _plus_ the public Savant endpoints, still keyless.
+
+- **Multi-sport registry (`src/lib/sports/`).** Turns Diamond Edge from an MLB
+  app into a platform. Code asks the registry (`getSport`/`enabledSports`),
+  never a sport directly. `SportKey = "mlb" | "tennis"`; MLB is registered
+  eagerly, a sport ships behind `SportDefinition.enabled`. A `SportMarket`
+  reuses the shared `DistFamily` families so the engine simulates it with no
+  sport-specific code; `structural: true` markets are driven by a per-sport
+  Monte Carlo + `summarizeSamples` instead of a closed-form draw. The change
+  is deliberately non-invasive: the pure core (math/odds/simulate/hitRate) was
+  already sport-neutral.
+
+- **Tennis vertical (`src/lib/tennis/`, `src/app/tennis/`).** A self-contained
+  sport namespace: `data/` (acquisition + identity + derive), `providers/`
+  (fixture/manual/live/historical-CSV behind a registry), `model/` (a
+  structural point→game→set→match simulator, ratings, fair lines). Importing
+  `tennis/index.ts` self-registers the sport via side effect; nothing in the
+  MLB path imports it, so it stays fully isolated. Design docs live in
+  `docs/tennis/`.
+
+- **PrizePicks integration (`src/lib/prizepicks/`, `/api/prizepicks/*`,
+  `/prizepicks-board`).** Import a PrizePicks board (CSV/paste), resolve each
+  entry to an MLB player + canonical market (`player-resolver`, `market-map`,
+  `normalize`), then evaluate it by calling the **existing** `runAnalysis`
+  unchanged — the imported line is used only as the threshold, never fed into
+  the projection. Adds ranking/grading on top. The "protected core" contract
+  (engine is never modified) is documented in
+  `docs/prizepicks-integration/`.
+
+Other route-level pieces: `src/lib/mlb/slate.ts` + `/slate` (multi-game daily
+board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
+(team/game markets — NRFI, totals, run line).
 
 ## Conventions
 
