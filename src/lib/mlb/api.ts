@@ -17,8 +17,7 @@ import type {
 } from "./types";
 import { safeValidate } from "@/lib/schemas/validate";
 import { scheduleSchema, peopleSchema, statsSchema } from "@/lib/schemas/mlb";
-
-const CURRENT_SEASON = 2026;
+import { getCurrentMlbSeason } from "./season";
 
 /** All active MLB teams. Cached for an hour — this rarely changes. */
 export async function getTeams(): Promise<MlbTeam[]> {
@@ -81,7 +80,7 @@ export async function getPlayer(id: number): Promise<MlbPerson | null> {
 export async function getGameLog(
   playerId: number,
   group: StatGroup,
-  season = CURRENT_SEASON,
+  season = getCurrentMlbSeason(),
 ): Promise<GameLogSplit[]> {
   const raw = await mlbGet<unknown>(
     `/people/${playerId}/stats?stats=gameLog&group=${group}&season=${season}`,
@@ -99,7 +98,7 @@ export async function getGameLog(
 export async function getMultiSeasonGameLog(
   playerId: number,
   group: StatGroup,
-  seasons: number[] = [CURRENT_SEASON - 1, CURRENT_SEASON],
+  seasons: number[] = [getCurrentMlbSeason() - 1, getCurrentMlbSeason()],
 ): Promise<GameLogSplit[]> {
   const logs = await Promise.all(seasons.map((s) => getGameLog(playerId, group, s).catch(() => [])));
   return logs.flat();
@@ -224,7 +223,7 @@ interface SplitsApiResponse {
 export async function getPlayerSplits(
   playerId: number,
   group: StatGroup,
-  season = CURRENT_SEASON,
+  season = getCurrentMlbSeason(),
 ): Promise<PlayerSplit[]> {
   const sitCodes = "h,a,d,n,vl,vr";
   const res = await mlbGet<SplitsApiResponse>(
@@ -260,4 +259,4 @@ export async function getPlayerSplits(
   });
 }
 
-export { CURRENT_SEASON };
+export { getCurrentMlbSeason };

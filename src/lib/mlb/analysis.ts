@@ -6,7 +6,7 @@
    returns a fully-provenanced, quality-scored payload.
    ========================================================================== */
 
-import { getPlayer, getGameLog, getMultiSeasonGameLog, getSchedule, CURRENT_SEASON } from "./api";
+import { getPlayer, getGameLog, getMultiSeasonGameLog, getSchedule, getCurrentMlbSeason } from "./api";
 import { extractPropSeries, seriesValues, statGroupForProp, type PropGameSample } from "./series";
 import { mapPlayer, mapGame } from "@/lib/providers/mlbStats";
 import { savantStatcastProvider } from "@/lib/providers/statcast";
@@ -112,7 +112,7 @@ async function resolveOpponent(teamId: number | undefined): Promise<OpponentCont
 
 export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload> {
   const prop = getProp(req.propKey);
-  const season = req.season ?? CURRENT_SEASON;
+  const season = req.season ?? getCurrentMlbSeason();
   const lastUpdated = Date.now();
 
   const rawPlayer = await getPlayer(req.playerId).catch(() => null);

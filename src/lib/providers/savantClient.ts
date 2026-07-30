@@ -17,6 +17,24 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<string>>();
 
+/** Bound the CSV cache (leaderboards are large); evict expired then oldest. */
+const MAX_CACHE_ENTRIES = 100;
+
+function setCache(key: string, entry: CacheEntry): void {
+  if (cache.size >= MAX_CACHE_ENTRIES && !cache.has(key)) {
+    const now = Date.now();
+    for (const [k, v] of cache) {
+      if (v.expires <= now) cache.delete(k);
+    }
+    while (cache.size >= MAX_CACHE_ENTRIES) {
+      const oldest = cache.keys().next().value;
+      if (oldest === undefined) break;
+      cache.delete(oldest);
+    }
+  }
+  cache.set(key, entry);
+}
+
 export class SavantError extends Error {
   constructor(
     message: string,
@@ -71,7 +89,7 @@ export async function savantCsv(path: string, ttlSeconds = 6 * 3600): Promise<st
 
   const promise = fetchText(url, 15000, 2)
     .then((value) => {
-      cache.set(url, { value, expires: now + ttlSeconds * 1000 });
+      setCache(url, { value, expires: now + ttlSeconds * 1000 });
       return value;
     })
     .finally(() => inflight.delete(url));

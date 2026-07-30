@@ -15,9 +15,18 @@ any prop market, then compares that probability to the price you're offered —
 so you can see the **edge**, the **expected value**, and the **fair line** on
 both sides of the bet.
 
-It runs entirely on the **public MLB Stats API** (no key required) and computes
-everything — projections, simulation, hit rates, EV, Kelly — from first
-principles in TypeScript. No paid feeds, no black boxes.
+It runs entirely on the **public MLB Stats API** and **Baseball Savant** (no key
+required) and computes everything — projections, simulation, hit rates, EV,
+Kelly — from first principles in TypeScript. No paid feeds, no black boxes.
+
+The active season is **resolved dynamically** from the date
+(`src/lib/mlb/season.ts`), so the app tracks the current MLB season with no code
+change, and a request for a past date resolves to that date's season rather than
+"now". Live network verification (`scripts/verify-data.ts`,
+`scripts/verify-statcast.ts`) is separated from the deterministic unit suite.
+Confirmed lineups only post ~1–2h before first pitch; until then lineups are
+labeled **projected**. Tennis is a self-contained sport built on fixtures and
+manual/CSV imports — it is not a live feed.
 
 ## Features
 
@@ -47,9 +56,17 @@ TanStack Query · Motion · Recharts · Lucide.
 
 ## Getting started
 
+**Prerequisites:** Node 22+, pnpm 10+ (package manager, from the lockfile), and
+Bun 1.3+ (runs the unit test suite and pure-logic scripts).
+
 ```bash
 pnpm install
 pnpm dev          # http://localhost:3000
+
+pnpm lint         # eslint
+pnpm exec tsc --noEmit
+bun test src      # unit suite (deterministic, no network)
+pnpm build        # production build (typechecks)
 ```
 
 > **Sandboxed / proxied networks:** if outbound HTTPS is behind a
