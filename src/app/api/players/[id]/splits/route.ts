@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getPlayer, getPlayerSplits, CURRENT_SEASON } from "@/lib/mlb/api";
+import { getPlayer, getPlayerSplits, getCurrentMlbSeason } from "@/lib/mlb/api";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,7 +9,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const playerId = Number(id);
   if (!Number.isFinite(playerId)) return NextResponse.json({ error: "invalid_player_id" }, { status: 400 });
 
-  const season = Number(req.nextUrl.searchParams.get("season")) || CURRENT_SEASON;
+  const season = Number(req.nextUrl.searchParams.get("season")) || getCurrentMlbSeason();
   try {
     const player = await getPlayer(playerId).catch(() => null);
     const group = player?.primaryPosition?.abbreviation === "P" ? "pitching" : "hitting";

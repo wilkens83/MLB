@@ -6,7 +6,7 @@
    ========================================================================== */
 
 import { getProp, type PropDef } from "@/lib/props/catalog";
-import { getGameLog, CURRENT_SEASON } from "./api";
+import { getGameLog, getCurrentMlbSeason } from "./api";
 import { extractPropSeries, seriesValues, statGroupForProp } from "./series";
 import { buildSlateGame } from "./slate";
 import { project } from "@/lib/prediction/projection";
@@ -114,7 +114,7 @@ async function cardFor(p: SlatePlayer, prop: PropDef, season: number): Promise<M
 export async function computeMarketGameCards(
   gamePk: number,
   marketKey: string,
-  season = CURRENT_SEASON,
+  season = getCurrentMlbSeason(),
 ): Promise<MarketGameCards> {
   const prop = getProp(marketKey);
   if (!prop) return { gamePk, market: marketKey, cards: [], lastUpdated: Date.now() };

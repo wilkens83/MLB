@@ -13,8 +13,7 @@
 import { savantCsv, parseCsv, SAVANT_PROVIDER } from "./savantClient";
 import type { StatcastBatter, StatcastPitcher } from "@/lib/domain/models";
 import type { StatcastProvider } from "./types";
-
-const CURRENT_SEASON = 2026;
+import { getCurrentMlbSeason } from "@/lib/mlb/season";
 
 const BATTER_SELECTIONS = [
   "player_age", "ab", "pa", "hit", "k_percent", "bb_percent", "batting_avg",
@@ -156,7 +155,7 @@ export function clearStatcastCache() {
 export const savantStatcastProvider: StatcastProvider = {
   name: SAVANT_PROVIDER,
 
-  async getBatter(playerId, season = CURRENT_SEASON) {
+  async getBatter(playerId, season = getCurrentMlbSeason()) {
     try {
       let idxP = batterIndexCache.get(season);
       if (!idxP) {
@@ -171,7 +170,7 @@ export const savantStatcastProvider: StatcastProvider = {
     }
   },
 
-  async getPitcher(playerId, season = CURRENT_SEASON) {
+  async getPitcher(playerId, season = getCurrentMlbSeason()) {
     try {
       let idxP = pitcherIndexCache.get(season);
       if (!idxP) {
@@ -187,4 +186,4 @@ export const savantStatcastProvider: StatcastProvider = {
   },
 };
 
-export { CURRENT_SEASON as STATCAST_SEASON };
+export { getCurrentMlbSeason as statcastSeason };

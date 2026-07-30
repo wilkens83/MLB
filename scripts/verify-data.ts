@@ -2,6 +2,9 @@ import { getTodaysGames, searchPlayers, getGameLog, getPlayer } from "@/lib/mlb/
 import { extractPropSeries, seriesValues, statGroupForProp } from "@/lib/mlb/series";
 import { analyzeProp } from "@/lib/prediction/engine";
 import { buildContext } from "@/lib/mlb/context";
+import { getCurrentMlbSeason } from "@/lib/mlb/season";
+
+const SEASON = getCurrentMlbSeason();
 
 async function main() {
   console.log("== Today's games (live API) ==");
@@ -23,9 +26,9 @@ async function main() {
   const player = await getPlayer(judge.id);
   console.log(`  profile: ${player?.fullName}, ${player?.primaryPosition?.abbreviation}, bats ${player?.batSide?.code}, team ${player?.currentTeam?.name}`);
 
-  console.log("\n== Total Bases prop analysis from live 2025 log ==");
+  console.log(`\n== Total Bases prop analysis from live ${SEASON} log ==`);
   const group = statGroupForProp("total_bases");
-  const log = await getGameLog(judge.id, group, 2025);
+  const log = await getGameLog(judge.id, group, SEASON);
   const samples = extractPropSeries("total_bases", log);
   const series = seriesValues(samples);
   console.log(`  ${series.length} games; last 10:`, series.slice(-10));
@@ -51,7 +54,7 @@ async function main() {
     .flatMap((g) => [g.teams.home.probablePitcher, g.teams.away.probablePitcher])
     .find(Boolean);
   if (pitcher) {
-    const plog = await getGameLog(pitcher.id, "pitching", 2025);
+    const plog = await getGameLog(pitcher.id, "pitching", SEASON);
     const ks = seriesValues(extractPropSeries("strikeouts", plog));
     console.log(`  ${pitcher.fullName}: ${ks.length} starts, last 8 K:`, ks.slice(-8));
     if (ks.length) {

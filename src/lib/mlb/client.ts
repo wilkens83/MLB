@@ -16,6 +16,28 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const inflight = new Map<string, Promise<unknown>>();
 
+/**
+ * Cap the in-memory cache so a long-running server can't grow it without bound
+ * (many distinct player/season URLs). On overflow we first drop expired entries,
+ * then evict oldest-inserted (Map preserves insertion order) until under cap.
+ */
+const MAX_CACHE_ENTRIES = 500;
+
+function setCache(key: string, entry: CacheEntry): void {
+  if (cache.size >= MAX_CACHE_ENTRIES && !cache.has(key)) {
+    const now = Date.now();
+    for (const [k, v] of cache) {
+      if (v.expires <= now) cache.delete(k);
+    }
+    while (cache.size >= MAX_CACHE_ENTRIES) {
+      const oldest = cache.keys().next().value;
+      if (oldest === undefined) break;
+      cache.delete(oldest);
+    }
+  }
+  cache.set(key, entry);
+}
+
 export interface FetchOptions {
   /** Cache TTL in seconds. 0 disables caching. */
   ttl?: number;
@@ -99,7 +121,7 @@ export async function mlbGet<T>(path: string, opts: FetchOptions = {}): Promise<
 
   const promise = doFetch<T>(url, timeout, retries)
     .then((value) => {
-      if (ttl > 0) cache.set(url, { value, expires: now + ttl * 1000 });
+      if (ttl > 0) setCache(url, { value, expires: now + ttl * 1000 });
       return value;
     })
     .finally(() => {

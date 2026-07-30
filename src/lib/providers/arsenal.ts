@@ -7,8 +7,7 @@
    ========================================================================== */
 
 import { savantCsv, parseCsv } from "./savantClient";
-
-const CURRENT_SEASON = 2026;
+import { getCurrentMlbSeason } from "@/lib/mlb/season";
 
 export interface PitchType {
   pitchType: string;
@@ -75,7 +74,7 @@ async function buildIndex(season: number): Promise<Map<number, PitcherArsenal>> 
 
 export async function getPitcherArsenal(
   playerId: number,
-  season = CURRENT_SEASON,
+  season = getCurrentMlbSeason(),
 ): Promise<PitcherArsenal | null> {
   try {
     let idx = cache.get(season);
