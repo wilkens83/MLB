@@ -82,12 +82,33 @@ src/app/...                  Server components fetch via lib/mlb; client dashboa
   multiplicative park/weather/matchup context. The Monte Carlo in `simulate.ts`
   draws from the resulting distribution and blends the empirical over/under
   probability with the closed-form CDF for tail stability.
+- **Season is resolved, never hard-coded.** `src/lib/mlb/season.ts` is the single
+  source of truth: `getCurrentMlbSeason()` derives the active season from the
+  date (so July 2026 → 2026 with no code change at year rollover), and
+  `getMlbSeasonForDate(date)` resolves a historical timestamp to the season it
+  belonged to — a past game-log or box-score request never leaks the current
+  season. The deep offseason (Jan/Feb) maps back to the previous, most-recently
+  completed season. Every `season` default parameter across `mlb/api.ts`,
+  `providers/statcast.ts`, and `providers/arsenal.ts` calls this resolver; do
+  not reintroduce a literal year.
 - **Caching is not Cache Components.** We intentionally do NOT enable
   `cacheComponents` (which would force `<Suspense>`/`use cache` everywhere).
   Freshness comes from the TTL cache in `mlb/client.ts` plus `force-dynamic`
   route handlers. Data-fetching pages are `export const dynamic = "force-dynamic"`.
-- **No API key needed.** `statsapi.mlb.com` is public. Sportsbook prices are
-  user-supplied inputs to the odds math — there is no paid odds feed wired in.
+  TTLs are tuned per data type (live game ~30s, schedule ~45s, lineups/splits
+  ~10min, teams/rosters/player bio ~10–60min, boxscore/Savant CSV hours). Both
+  the MLB and Savant in-memory caches are size-bounded (500 / 100 entries) with
+  expired-then-oldest eviction so a long-running server can't grow them without
+  limit. Missing Savant/Statcast values stay `undefined` and are reported as
+  unavailable — never coerced to 0.
+- **No API key needed.** `statsapi.mlb.com` and Baseball Savant's public
+  leaderboards (`baseballsavant.mlb.com`, CSV) are both keyless. Sportsbook
+  prices are user-supplied inputs to the odds math — there is no paid odds feed.
+- **Live vs. projected.** Probable pitchers and box-score-derived lineups are
+  labeled `projected`/`estimated` until MLB posts confirmed lineups (~1–2h
+  pregame); the analysis payload carries `lineupConfirmed`/`starterConfirmed`
+  and `meta.season`. Tennis ships on fixtures + manual/CSV providers (its live
+  providers are inert), so it is not presented as a live feed.
 - **Determinism.** Monte Carlo uses a seeded RNG (`mulberry32`) keyed by
   player/prop/line so a given request reproduces the same simulation.
 
