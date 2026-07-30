@@ -1,0 +1,82 @@
+name: CI
+
+# Validate every pull request targeting main, plus pushes to main itself.
+# Live-data smoke tests run only on manual dispatch or the daily schedule.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 13 * * *" # 13:00 UTC daily
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Fast, deterministic checks — no external network required. These gate PRs.
+  verify:
+    name: lint · typecheck · test · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (locked)
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm exec tsc --noEmit
+
+      - name: Unit tests (Bun)
+        run: bun test src
+
+      - name: Production build
+        run: pnpm build
+
+  # Live MLB / Baseball Savant smoke tests hit external services, so they must
+  # not gate every PR (a Savant outage would block unrelated changes). Run them
+  # only on manual dispatch or the daily schedule.
+  live-data:
+    name: live MLB + Savant smoke tests
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies (locked)
+        run: pnpm install --frozen-lockfile
+
+      - name: Live MLB pipeline
+        run: npx tsx --tsconfig tsconfig.json scripts/verify-data.ts
+
+      - name: Live Statcast pipeline
+        run: npx tsx --tsconfig tsconfig.json scripts/verify-statcast.ts
+
+# Allow the live-data job to be triggered by hand or on a schedule.
