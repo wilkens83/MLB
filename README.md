@@ -46,6 +46,14 @@ manual/CSV imports — it is not a live feed.
 - **Interactive dashboards** — animated distribution, game-log, hit-rate, and
   rolling-trend charts (Recharts) with live filters for line, price, side, and
   home/away splits.
+- **AI Data Chat** — a conversational analytics workspace (`/chat`) that answers
+  natural-language questions ("best strikeout projections today?", "compare Judge
+  and Soto", "which PrizePicks lines have the highest edge?") from **real** project
+  data through a controlled, typed tool layer. It never fabricates a stat: every
+  number comes from a tool result, sources + freshness are cited, and unsupported
+  questions are answered honestly. Runs offline with a deterministic mock provider
+  (no API key); a real Anthropic provider is env-gated. See
+  [`docs/ai-data-chat/`](./docs/ai-data-chat/architecture.md) and `.env.example`.
 - **Luxury UI** — black + molten-orange glassmorphism, full light/dark theming,
   responsive, accessible, server-rendered.
 
