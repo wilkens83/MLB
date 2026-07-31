@@ -160,6 +160,26 @@ namespace and reuses the pure core.
   (engine is never modified) is documented in
   `docs/prizepicks-integration/`.
 
+- **AI Data Chat (`src/features/chat/`, `/api/chat`, `/chat`).** A conversational
+  analytics workspace. Natural-language questions are answered ONLY from real
+  project data through a **controlled, typed tool layer** — the model cannot query
+  arbitrary modules, SQL, or shell. Flow: `/api/chat` (Zod-validated, rate-limited)
+  → `orchestrator.runChat()` resolves date/season, builds the tool allow-list +
+  a guardrailed `invoke` (max tools, per-tool timeout, row caps), loads recent
+  turns + prior state, runs the configured provider, then validates + clamps the
+  response and persists both messages. Tools reuse the existing engine
+  (`runAnalysis`, `buildSlate`, `computeMarketGameCards`, `searchPlayers`,
+  `savantStatcastProvider`, `evaluateEntry`, provider health). The provider is
+  abstracted (`ChatModelProvider`): `mock` (default, offline, deterministic — no
+  key) and `anthropic` (real, env-gated, prose-only so it's hallucination-proof
+  by construction); `openai`/`google` are interface-ready but not shipped. The
+  model returns only validated blocks (markdown/table/player-card/game-card/
+  metric-grid/bar-chart/line-chart) — never raw HTML — each answer cites sources
+  with freshness and carries `generatedAt`/`dataAsOf`/model version. Conversation
+  memory is a server-side, session-keyed store shaped like the target DB tables.
+  `CHAT_AI_PROVIDER` selects the provider (see `.env.example`); keys are
+  server-only. Design docs: `docs/ai-data-chat/`.
+
 Other route-level pieces: `src/lib/mlb/slate.ts` + `/slate` (multi-game daily
 board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
 (team/game markets — NRFI, totals, run line).
