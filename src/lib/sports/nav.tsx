@@ -9,7 +9,7 @@
 
 import {
   Activity, CalendarDays, Microscope, LayoutGrid, Users, HeartPulse, ClipboardList,
-  Boxes, History, FlaskConical, type LucideIcon,
+  Boxes, History, FlaskConical, Sparkles, type LucideIcon,
 } from "lucide-react";
 import type { SportKey } from "./types";
 
@@ -53,6 +53,7 @@ const MLB_UI: SportUi = {
     {
       title: "Research",
       items: [
+        { href: "/chat", label: "AI Data Chat", icon: Sparkles, match: (p) => p.startsWith("/chat") },
         { href: "/prizepicks-board", label: "PrizePicks Board", icon: ClipboardList, match: (p) => p.startsWith("/prizepicks-board") },
         { href: "/analyze", label: "Prop Explorer", icon: Microscope, match: (p) => p.startsWith("/analyze") },
         { href: "/slate", label: "Player Analysis", icon: LayoutGrid, match: (p) => p.startsWith("/slate") },
