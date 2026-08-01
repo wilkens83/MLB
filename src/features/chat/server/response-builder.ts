@@ -14,6 +14,7 @@ import type { ComparePlayersOutput } from "../tools/mlb/compare-players";
 import type { DataHealthOutput } from "../tools/mlb/get-data-health";
 import type { PrizePicksBoardOutput } from "../tools/prizepicks/get-board";
 import type { PrizePicksEdgesOutput, EdgeRow } from "../tools/prizepicks/rank-edges";
+import type { AnalyzeEntryOutput } from "../tools/prizepicks/analyze-entry";
 
 /* --------------------------- filtering (follow-ups) ----------------------- */
 
@@ -373,4 +374,61 @@ export function buildEdgesBlocks(data: PrizePicksEdgesOutput): {
 
 function formatAm(v: number): string {
   return v > 0 ? `+${v}` : `${v}`;
+}
+
+/* ---------------------------- entry analysis ------------------------------ */
+
+export function buildEntryBlocks(data: AnalyzeEntryOutput): {
+  answer: string;
+  blocks: ChatResponseBlock[];
+  suggested: string[];
+} {
+  if (data.size < 2 || data.legs.length === 0) {
+    return {
+      answer: `An entry needs at least 2 resolved legs. Import a PrizePicks board with 2+ entries, then ask again.`,
+      blocks: [],
+      suggested: ["Show my PrizePicks board", "Which PrizePicks lines have the highest edge?"],
+    };
+  }
+  const legTable: ChatResponseBlock = {
+    type: "table",
+    title: `${data.size}-leg ${data.entryType} entry`,
+    columns: [
+      { key: "leg", label: "Leg" },
+      { key: "dir", label: "Side" },
+      { key: "prob", label: "Win %", format: "percent", align: "right" },
+    ],
+    rows: data.legs.map((l) => ({ leg: l.label, dir: l.direction, prob: l.probWin })),
+  };
+  const dist: ChatResponseBlock = {
+    type: "bar-chart",
+    data: {
+      title: "P(exactly k legs correct)",
+      labels: data.distribution.map((_, k) => `${k}`),
+      series: [{ name: "Probability %", values: data.distribution.map((p) => Math.round(p * 1000) / 10) }],
+      yLabel: "%",
+    },
+  };
+  const metrics: ChatResponseBlock = {
+    type: "metric-grid",
+    metrics: [
+      { label: "P(all win)", value: pct(data.probAllWin), tone: "brand" },
+      { label: "Exp. payout", value: `${data.expectedPayout}×`, tone: data.expectedPayout >= 1 ? "positive" : "negative" },
+      { label: "Contradictions", value: data.contradictions, tone: data.contradictions > 0 ? "negative" : "positive" },
+    ],
+  };
+  const blocks: ChatResponseBlock[] = [metrics, legTable, dist];
+  const flagged = data.correlations.filter((c) => c.contradiction || Math.abs(c.correlation) >= 0.2);
+  if (flagged.length) {
+    blocks.push({
+      type: "markdown",
+      content: ["**Leg relationships:**", ...flagged.map((c) => `- ${c.a} ↔ ${c.b}: r=${c.correlation}${c.contradiction ? " ⚠️ contradiction" : ""} — ${c.note}`)].join("\n"),
+    });
+  }
+  const answer = `${data.size}-leg ${data.entryType}: P(all win) ${pct(data.probAllWin)}, expected payout ${data.expectedPayout}× (${data.payoutTable}). ${data.contradictions > 0 ? `${data.contradictions} contradictory leg pair(s) detected.` : "No contradictions detected."} This is not a lock or guarantee.`;
+  return {
+    answer,
+    blocks,
+    suggested: ["Would this be better as a Power play?", "Show my PrizePicks board", "Which PrizePicks lines have the highest edge?"],
+  };
 }
