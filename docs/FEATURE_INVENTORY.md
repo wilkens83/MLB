@@ -34,6 +34,16 @@ was never built.
 | **Backtesting** metrics engine (Brier, log-loss, calibration buckets, hit-rate, MAE/RMSE, by-market/bucket) over pregame snapshots + graded results | `src/lib/backtest/*` | ✅ new, unit-tested |
 | Chat tools surfacing entry analysis + backtest metrics | `src/features/chat/tools/*` | ✅ new |
 
+## Added by the PrizePicks economics rebuild
+
+| Subsystem | Location | Status |
+|---|---|---|
+| Versioned, configurable payout tables (Power/Flex, refunds, effective dates, source) | `src/lib/prizepicks/entry/payout.ts` | ✅ new, tested |
+| Complete-entry economics (expected return/profit, downside, "Payout configuration required") | `entry/payout.ts` + `entry/entry.ts` | ✅ new, tested |
+| Independence-approximation path (Poisson-binomial, explicitly labeled) | `entry/independence.ts` | ✅ new, tested |
+| Projection assessment policy (REVIEW/WAIT/AVOID/NO_EDGE/UNAVAILABLE) | `src/lib/prizepicks/assessment.ts` | ✅ new, tested |
+| Sportsbook-free regression guard for the PrizePicks path | `src/lib/prizepicks/no-sportsbook.test.ts` | ✅ new |
+
 ## Known limitations (genuinely unbuilt — documented, not stubbed)
 
 These were never implemented on any branch. They are **not** "distributed

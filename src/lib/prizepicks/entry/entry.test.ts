@@ -70,23 +70,35 @@ describe("correlation + contradiction", () => {
   });
 });
 
-describe("payout", () => {
-  test("power EV uses distribution[size] * multiplier", () => {
+describe("payout economics", () => {
+  test("method is joint-simulation and power expected return uses P(all)·multiplier", () => {
     const legs = [pitcherLeg("a", "strikeouts", 5.5), hitterLeg("b", "total_bases", 1.5, 200)];
-    const table = defaultPayoutTable("power", 2); // { 2: 3 }
+    const table = defaultPayoutTable("power", 2)!; // 2 correct → 3×
     const r = analyzeEntry({ legs, entryType: "power", iterations: 4000, seed: "s", payoutTable: table });
-    expect(r.payout.ev).toBeCloseTo(r.probAllWin * 3, 3);
+    expect(r.method).toBe("joint-simulation");
+    expect(r.economics.configured).toBe(true);
+    expect(r.economics.expectedReturn).toBeCloseTo(r.probAllWin * 3, 3);
+    expect(r.economics.expectedProfit).toBeCloseTo(r.probAllWin * 3 - 1, 3);
   });
 
-  test("flex EV rewards partial hits", () => {
+  test("flex expected return rewards partial hits", () => {
     const legs = [
       hitterLeg("a", "total_bases", 1.5, 200),
       hitterLeg("b", "total_bases", 1.5, 201),
       hitterLeg("c", "total_bases", 1.5, 202),
     ];
     const r = analyzeEntry({ legs, entryType: "flex", iterations: 4000, seed: "s" });
-    // 3-pick flex pays on 2 correct too → EV strictly greater than power-only all-3.
-    expect(r.payout.ev).toBeGreaterThan(r.probAllWin * 2.25);
+    expect(r.economics.expectedReturn!).toBeGreaterThan(r.probAllWin * 2.25);
+    expect(r.downsideProbability).toBeGreaterThan(0);
+  });
+
+  test("no configured table → economics withheld with 'Payout configuration required'", () => {
+    // Power size 3 has a default, but an unsupported size (e.g. 7) has none.
+    const legs = Array.from({ length: 7 }, (_, i) => hitterLeg(`l${i}`, "total_bases", 1.5, 400 + i));
+    const r = analyzeEntry({ legs, entryType: "power", iterations: 1500, seed: "s" });
+    expect(r.economics.configured).toBe(false);
+    expect(r.economics.expectedReturn).toBeUndefined();
+    expect(r.warnings.join(" ")).toMatch(/payout configuration required/i);
   });
 });
 

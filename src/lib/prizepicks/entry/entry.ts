@@ -16,7 +16,10 @@
 import type { PaRates } from "@/lib/prediction/paSim";
 import { simulateHitterGame, simulatePitcherGame, unitRng } from "./jointSim";
 import { analyzeCorrelations, type CorrelationPair, type LegRef } from "./correlation";
-import { defaultPayoutTable, expectedPayout, type EntryType, type PayoutTable } from "./payout";
+import {
+  defaultPayoutTable, entryEconomics,
+  type EntryEconomics, type EntryFormat, type PrizePicksPayoutTable,
+} from "./payout";
 
 export type LegDirection = "more" | "less";
 
@@ -46,10 +49,13 @@ export interface EntryLegInput {
 
 export interface EntryAnalysisInput {
   legs: EntryLegInput[];
-  entryType: EntryType;
+  entryType: EntryFormat;
   iterations?: number;
   seed?: string;
-  payoutTable?: PayoutTable;
+  /** Versioned payout table; when omitted a configurable default is used, and
+      when no default exists economics are withheld ("Payout configuration required"). */
+  payoutTable?: PrizePicksPayoutTable;
+  stake?: number;
 }
 
 const HITTER_FIELDS: Record<string, keyof import("./jointSim").HitterGameOutcome> = {
@@ -83,18 +89,26 @@ export interface EntryLegResult {
 }
 
 export interface EntryAnalysis {
-  entryType: EntryType;
+  entryType: EntryFormat;
   size: number;
   iterations: number;
+  /** How the entry distribution was produced. This engine simulates jointly, so
+      same-player-game legs are correlated; an independence approximation (from
+      marginals) would be labeled and warned instead. */
+  method: "joint-simulation" | "independence-approximation";
   legs: EntryLegResult[];
   /** distribution[k] = P(exactly k legs win). Length = size + 1. */
   distribution: number[];
   correlations: CorrelationPair[];
   contradictions: CorrelationPair[];
-  payout: { table: string; ev: number; breakdown: { correct: number; probability: number; multiplier: number }[] };
+  /** Payout-table-driven economics; withheld (configured:false) when unconfigured. */
+  economics: EntryEconomics;
   /** P(all legs win) — the Power condition. */
   probAllWin: number;
-  /** Expalue-neutral variance proxy: std dev of correct-count. */
+  /** P(entry returns less than stake) — a losing ticket, when economics configured. */
+  downsideProbability?: number;
+  /** Variance + std dev of the number of correct legs. */
+  variance: number;
   correctCountStdDev: number;
   warnings: string[];
 }
@@ -188,14 +202,23 @@ export function analyzeEntry(input: EntryAnalysisInput): EntryAnalysis {
   const correlations = analyzeCorrelations(legRefs, indicators);
   const contradictions = correlations.filter((c) => c.contradiction);
 
-  // Payout.
+  // Payout economics from the versioned table (withheld when unconfigured).
   const table = input.payoutTable ?? defaultPayoutTable(input.entryType, size);
-  const { ev, breakdown } = expectedPayout(table, distribution);
-  if (Object.keys(table.byCorrect).length === 0) {
-    warnings.push(`No payout multipliers configured for a ${input.entryType} entry of size ${size}; expected payout is 0.`);
+  const economics = entryEconomics(table, distribution, input.stake ?? 1);
+  if (!economics.configured) {
+    warnings.push("Payout configuration required — economic EV withheld; probabilities and correlation still valid.");
   }
 
-  // Correct-count mean/std for a variance sense.
+  // Downside = P(entry returns strictly less than stake), when economics known.
+  let downsideProbability: number | undefined;
+  if (economics.configured) {
+    const payingByK = new Map(economics.breakdown.map((b) => [b.correct, b.payoutMultiplier]));
+    let d = 0;
+    for (let k = 0; k <= size; k++) if ((payingByK.get(k) ?? 0) < 1) d += distribution[k];
+    downsideProbability = Math.round(d * 10000) / 10000;
+  }
+
+  // Correct-count mean/variance/std.
   let mean = 0;
   for (let k = 0; k <= size; k++) mean += k * distribution[k];
   let variance = 0;
@@ -209,16 +232,19 @@ export function analyzeEntry(input: EntryAnalysisInput): EntryAnalysis {
     entryType: input.entryType,
     size,
     iterations,
+    method: "joint-simulation",
     legs: legResults,
     distribution,
     correlations,
     contradictions,
-    payout: { table: table.label, ev: Math.round(ev * 1000) / 1000, breakdown },
+    economics,
     probAllWin: distribution[size] ?? 0,
+    downsideProbability,
+    variance: Math.round(variance * 10000) / 10000,
     correctCountStdDev: Math.sqrt(variance),
     warnings: [...new Set(warnings)],
   };
 }
 
-export { defaultPayoutTable } from "./payout";
-export type { PayoutTable, EntryType } from "./payout";
+export { defaultPayoutTable, entryEconomics } from "./payout";
+export type { PrizePicksPayoutTable, EntryFormat, EntryEconomics } from "./payout";
