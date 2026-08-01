@@ -103,6 +103,62 @@ export function estimatePaRates(log: GameLogEntry[], priorStrength = 60): PaRate
   return { ...raw, out: Math.max(0.05, 1 - nonOut) };
 }
 
+/**
+ * Bayesian-shrunk per-batter-faced outcome rates a pitcher ALLOWS, from a
+ * pitcher game log. Non-HR hits are split into singles/doubles/triples by league
+ * proportions when the log lacks 2B/3B-allowed (documented approximation). Used
+ * by the joint entry simulator so a pitcher's markets move together.
+ */
+export function estimatePitcherAllowedRates(log: GameLogEntry[], priorStrength = 80): PaRates {
+  let bf = 0, k = 0, bb = 0, hbp = 0, hits = 0, hr = 0, dbl = 0, trp = 0;
+  for (const g of log) {
+    const s = g.stat;
+    const o = s.outs ?? Math.round((s.inningsPitched ?? 0) * 3);
+    const h = s.hits ?? 0;
+    const w = s.baseOnBalls ?? 0;
+    const hp = s.hitByPitch ?? 0;
+    const faced = o + h + w + hp;
+    if (faced === 0) continue;
+    hits += h; hr += s.homeRuns ?? 0; k += s.strikeOuts ?? 0;
+    bb += w; hbp += hp; dbl += s.doubles ?? 0; trp += s.triples ?? 0;
+    bf += faced;
+  }
+  const wgt = bf / (bf + priorStrength);
+  const blend = (obs: number, prior: number) => wgt * (bf > 0 ? obs / bf : prior) + (1 - wgt) * prior;
+  const kR = blend(k, LEAGUE_PA_RATES.k);
+  const bbR = blend(bb, LEAGUE_PA_RATES.bb);
+  const hbpR = blend(hbp, LEAGUE_PA_RATES.hbp);
+  const hrR = blend(hr, LEAGUE_PA_RATES.hr);
+  const nonHrHits = Math.max(0, hits - hr);
+  const hitR = blend(nonHrHits, LEAGUE_PA_RATES.single + LEAGUE_PA_RATES.double + LEAGUE_PA_RATES.triple);
+  // Split non-HR hits by observed 2B/3B share, else league proportions.
+  const totalXbh = dbl + trp;
+  const dblShare = nonHrHits > 0 && totalXbh > 0 ? dbl / nonHrHits : 0.20;
+  const trpShare = nonHrHits > 0 && totalXbh > 0 ? trp / nonHrHits : 0.02;
+  const singleR = hitR * (1 - dblShare - trpShare);
+  const doubleR = hitR * dblShare;
+  const tripleR = hitR * trpShare;
+  const nonOut = kR + bbR + hbpR + singleR + doubleR + tripleR + hrR;
+  return {
+    k: kR, bb: bbR, hbp: hbpR, single: singleR, double: doubleR, triple: tripleR, hr: hrR,
+    out: Math.max(0.05, 1 - nonOut),
+  };
+}
+
+/** Expected batters faced per start (fallback 24). */
+export function expectedBattersFaced(log: GameLogEntry[]): number {
+  let bf = 0, games = 0;
+  for (const g of log) {
+    const s = g.stat;
+    const o = s.outs ?? Math.round((s.inningsPitched ?? 0) * 3);
+    const faced = o + (s.hits ?? 0) + (s.baseOnBalls ?? 0) + (s.hitByPitch ?? 0);
+    if (faced === 0) continue;
+    bf += faced; games++;
+  }
+  if (games === 0) return 24;
+  return clamp(bf / games, 12, 32);
+}
+
 /** Average PAs per game from the log (fallback 4.2). */
 export function expectedPasPerGame(log: GameLogEntry[]): number {
   const t = sumHitting(log);
