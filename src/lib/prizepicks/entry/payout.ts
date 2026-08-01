@@ -1,66 +1,146 @@
 /* ============================================================================
-   PrizePicks entry payout configuration. PrizePicks offers Power Play (all legs
-   must hit) and Flex Play (partial payouts for missing one, sometimes two). The
-   exact multipliers vary by promotion and region, so they are CONFIG here — the
-   evaluator takes a payout table and never hard-codes "official" numbers. If a
-   caller does not supply one, we use the commonly published default table and
-   clearly label it as a configurable default.
-
-   A payout table maps entry size → (number correct → payout multiplier of stake).
+   Versioned, configurable PrizePicks payout engine. PrizePicks is NOT a
+   traditional sportsbook: economic value comes from the COMPLETE entry against
+   the actual payout structure, never from an American price like -110 and never
+   from per-leg Kelly. Payout tables are CONFIG — versioned, effective-dated, and
+   sourced — and the engine refuses to invent economics when a table is missing
+   ("Payout configuration required"). Multipliers below are the commonly
+   published defaults, explicitly labeled configurable and never guaranteed.
    ========================================================================== */
 
-export type EntryType = "power" | "flex";
+export type ProjectionTier = "standard" | "goblin" | "demon" | "discounted" | "promo" | "unknown";
+export type EntryFormat = "power" | "flex";
 
-export interface PayoutTable {
-  type: EntryType;
-  size: number;
-  /** multiplier keyed by number of correct legs (pushes reduce effective size). */
-  byCorrect: Record<number, number>;
-  label: string;
+export interface PayoutRule {
+  /** Number of correct selections this rule applies to. */
+  correctSelections: number;
+  /** Multiplier of stake returned (1 = money back, 0 = loss). */
+  payoutMultiplier: number;
+  /** Optional distinct refund multiplier when the rule is a refund/partial. */
+  refundMultiplier?: number;
 }
 
-/** Commonly published default multipliers (configurable — NOT a guarantee). */
-const DEFAULT_POWER: Record<number, Record<number, number>> = {
-  2: { 2: 3 },
-  3: { 3: 5 },
-  4: { 4: 10 },
-  5: { 5: 20 },
-  6: { 6: 37.5 },
+export interface PrizePicksPayoutTable {
+  id: string;
+  version: string;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  format: EntryFormat;
+  pickCount: number;
+  tierComposition?: Partial<Record<ProjectionTier, number>>;
+  rules: PayoutRule[];
+  source: "manual-config" | "admin-config" | "verified-import";
+  capturedAt: string;
+}
+
+/* Commonly published default multipliers (configurable — NOT guaranteed). */
+const DEFAULT_POWER: Record<number, PayoutRule[]> = {
+  2: [{ correctSelections: 2, payoutMultiplier: 3 }],
+  3: [{ correctSelections: 3, payoutMultiplier: 5 }],
+  4: [{ correctSelections: 4, payoutMultiplier: 10 }],
+  5: [{ correctSelections: 5, payoutMultiplier: 20 }],
+  6: [{ correctSelections: 6, payoutMultiplier: 37.5 }],
 };
-const DEFAULT_FLEX: Record<number, Record<number, number>> = {
-  3: { 3: 2.25, 2: 1.25 },
-  4: { 4: 5, 3: 1.5 },
-  5: { 5: 10, 4: 2, 3: 0.4 },
-  6: { 6: 25, 5: 2, 4: 0.4 },
+const DEFAULT_FLEX: Record<number, PayoutRule[]> = {
+  3: [
+    { correctSelections: 3, payoutMultiplier: 2.25 },
+    { correctSelections: 2, payoutMultiplier: 1.25, refundMultiplier: 1.25 },
+  ],
+  4: [
+    { correctSelections: 4, payoutMultiplier: 5 },
+    { correctSelections: 3, payoutMultiplier: 1.5 },
+  ],
+  5: [
+    { correctSelections: 5, payoutMultiplier: 10 },
+    { correctSelections: 4, payoutMultiplier: 2 },
+    { correctSelections: 3, payoutMultiplier: 0.4, refundMultiplier: 0.4 },
+  ],
+  6: [
+    { correctSelections: 6, payoutMultiplier: 25 },
+    { correctSelections: 5, payoutMultiplier: 2 },
+    { correctSelections: 4, payoutMultiplier: 0.4, refundMultiplier: 0.4 },
+  ],
 };
 
-export function defaultPayoutTable(type: EntryType, size: number): PayoutTable {
-  const src = type === "power" ? DEFAULT_POWER[size] : DEFAULT_FLEX[size];
+const DEFAULT_VERSION = "pp-default-2026.1";
+
+/** Resolve a default versioned table for a format+size, or null if unconfigured. */
+export function defaultPayoutTable(format: EntryFormat, pickCount: number): PrizePicksPayoutTable | null {
+  const rules = format === "power" ? DEFAULT_POWER[pickCount] : DEFAULT_FLEX[pickCount];
+  if (!rules) return null;
   return {
-    type,
-    size,
-    byCorrect: src ?? {},
-    label: `default ${type} ${size}-pick multipliers (configurable — not a guarantee)`,
+    id: `${DEFAULT_VERSION}-${format}-${pickCount}`,
+    version: DEFAULT_VERSION,
+    effectiveFrom: "2026-01-01T00:00:00Z",
+    format,
+    pickCount,
+    rules,
+    source: "manual-config",
+    capturedAt: "2026-01-01T00:00:00Z",
   };
 }
 
+export interface EntryEconomics {
+  configured: boolean;
+  tableId: string | null;
+  tableVersion: string | null;
+  /** Σ P(exactly k correct) · payoutMultiplier(k). Undefined when unconfigured. */
+  expectedReturn?: number;
+  /** stake · (expectedReturn − 1). Undefined when unconfigured. */
+  expectedProfit?: number;
+  /** Same as expectedReturn (multiplier of stake). */
+  expectedMultiplier?: number;
+  /** P(landing on a rule flagged as a refund). */
+  refundProbability?: number;
+  breakdown: { correct: number; probability: number; payoutMultiplier: number; refund: boolean }[];
+  note: string;
+}
+
 /**
- * Expected payout multiplier of stake given the distribution over number of
- * correct legs. Pushes are handled by the caller by reducing the effective
- * entry (PrizePicks re-sizes an entry down on a push); here we just apply the
- * supplied table to the correct-count distribution.
+ * Entry economics from the correct-count distribution and a payout table.
+ * Refuses to compute EV when no table is configured (returns configured:false).
  */
-export function expectedPayout(
-  table: PayoutTable,
+export function entryEconomics(
+  table: PrizePicksPayoutTable | null,
   distribution: number[], // distribution[k] = P(exactly k correct)
-): { ev: number; breakdown: { correct: number; probability: number; multiplier: number }[] } {
-  let ev = 0;
-  const breakdown: { correct: number; probability: number; multiplier: number }[] = [];
+  stake = 1,
+): EntryEconomics {
+  if (!table) {
+    return {
+      configured: false,
+      tableId: null,
+      tableVersion: null,
+      breakdown: [],
+      note: "Payout configuration required — no versioned payout table for this format/size. Probabilities, correlation and scenario analysis are still valid.",
+    };
+  }
+  const ruleByK = new Map(table.rules.map((r) => [r.correctSelections, r]));
+  let expectedReturn = 0;
+  let refundProbability = 0;
+  const breakdown: EntryEconomics["breakdown"] = [];
   for (let k = 0; k < distribution.length; k++) {
     const p = distribution[k];
-    const mult = table.byCorrect[k] ?? 0;
-    ev += p * mult;
-    if (p > 0) breakdown.push({ correct: k, probability: p, multiplier: mult });
+    const rule = ruleByK.get(k);
+    const mult = rule?.payoutMultiplier ?? 0;
+    expectedReturn += p * mult;
+    const isRefund = rule?.refundMultiplier !== undefined;
+    if (isRefund) refundProbability += p;
+    if (p > 0) breakdown.push({ correct: k, probability: p, payoutMultiplier: mult, refund: isRefund });
   }
-  return { ev, breakdown };
+  return {
+    configured: true,
+    tableId: table.id,
+    tableVersion: table.version,
+    expectedReturn: round(expectedReturn),
+    expectedProfit: round(stake * (expectedReturn - 1)),
+    expectedMultiplier: round(expectedReturn),
+    refundProbability: round(refundProbability),
+    breakdown,
+    note: `Economics from ${table.format} payout table ${table.version} (configurable — not a guarantee).`,
+  };
+}
+
+function round(x: number, d = 4): number {
+  const f = 10 ** d;
+  return Math.round(x * f) / f;
 }
