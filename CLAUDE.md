@@ -180,9 +180,28 @@ namespace and reuses the pure core.
   `CHAT_AI_PROVIDER` selects the provider (see `.env.example`); keys are
   server-only. Design docs: `docs/ai-data-chat/`.
 
+- **Correlation-aware entry analysis (`src/lib/prizepicks/entry/`).** Evaluates a
+  complete PrizePicks Power/Flex entry, not isolated legs. `jointSim.ts` simulates
+  a player's game once per iteration (hitter PA sequence; pitcher batters-faced
+  through a bases-state run model) so multiple markets on the **same player-game**
+  are correlated; `correlation.ts` derives pairwise correlation from the joint 0/1
+  indicators (never by multiplying marginals) and flags contradictions;
+  `payout.ts` holds configurable Power/Flex tables (labeled configurable, never
+  guaranteed); `entry.ts` returns leg win-probs, the P(k correct) distribution,
+  and expected payout. Reachable via the chat `analyzeEntry` tool. Pure + tested.
+
+- **Backtesting metrics (`src/lib/backtest/`).** `computeBacktest(snapshots,
+  results)` scores immutable pregame snapshots vs graded results — Brier, log
+  loss, calibration buckets, MAE/RMSE, by-segment (market/prob/confidence/lineup/
+  model-version), even-money drawdown proxy. Strictly chronological: snapshots
+  with a feature cutoff after game start are excluded as leakage; thin samples are
+  flagged and profitability is never claimed from them. Pure + tested.
+
 Other route-level pieces: `src/lib/mlb/slate.ts` + `/slate` (multi-game daily
 board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
-(team/game markets — NRFI, totals, run line).
+(team/game markets — NRFI, totals, run line). Design/consolidation docs live in
+`docs/ARCHITECTURE.md`, `docs/MAIN_CONSOLIDATION_AUDIT.md`, and
+`docs/FEATURE_INVENTORY.md`.
 
 ## Conventions
 
