@@ -99,3 +99,17 @@
 
 **Status: consolidation complete.** `origin/main` is the single coherent Diamond
 Edge application; no valid functionality remains only on another branch.
+
+---
+
+## Addendum — PrizePicks economics rebuild (PR #9)
+
+After the consolidation, a follow-on PR (#9, merge commit
+`7306a517e1d59ca058d4968f130520fa409f564a`) made the PrizePicks decision layer
+PrizePicks-specific: a versioned/configurable Power & Flex payout engine,
+complete-entry economics (`expectedReturn = Σ P(k)·multiplier`), an
+independence-approximation fallback (labeled), a projection assessment policy
+(probability/confidence/data-quality/volatility/fragility separated), and a
+regression guard keeping the PrizePicks path free of `-110`/Kelly/American odds.
+Post-merge on `main`: lint 0, tsc 0, `bun test src` 294 passed / 0 failed, build
+success, live MLB pipeline OK. Full detail in `PRIZEPICKS_FINAL_REPORT.md`.
