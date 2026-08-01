@@ -17,6 +17,7 @@ export type IntentKind =
   | "prizepicks-board"
   | "prizepicks-edges"
   | "entry-analysis"
+  | "entry-decision"
   | "data-health"
   | "followup-filter"
   | "unsupported"
@@ -146,6 +147,12 @@ export function classifyIntent(
   // Unsupported domains — answer honestly, never fabricate.
   for (const u of UNSUPPORTED) {
     if (u.re.test(text)) return { kind: "unsupported", filters, playerNames: names, note: u.note, prop };
+  }
+
+  // Firm decision — check before entry analysis.
+  if (/\b(should i|firm decision|is this a bet|bet this|decision|bet_more|bet_less|verdict)\b/.test(text)) {
+    const entryType: "power" | "flex" | undefined = /\bpower\b/.test(text) ? "power" : /\bflex\b/.test(text) ? "flex" : undefined;
+    return { kind: "entry-decision", filters, playerNames: [], window, entryType };
   }
 
   // Entry analysis (correlation-aware, complete-entry) — check before generic PrizePicks.
