@@ -413,7 +413,12 @@ export function buildEntryBlocks(data: AnalyzeEntryOutput): {
     type: "metric-grid",
     metrics: [
       { label: "P(all win)", value: pct(data.probAllWin), tone: "brand" },
-      { label: "Exp. payout", value: `${data.expectedPayout}×`, tone: data.expectedPayout >= 1 ? "positive" : "negative" },
+      {
+        label: "Exp. return",
+        value: data.payoutConfigured && data.expectedReturn !== null ? `${data.expectedReturn}×` : "config required",
+        tone: data.payoutConfigured && (data.expectedReturn ?? 0) >= 1 ? "positive" : data.payoutConfigured ? "negative" : "default",
+      },
+      { label: "Downside", value: data.downsideProbability !== null ? pct(data.downsideProbability) : "—" },
       { label: "Contradictions", value: data.contradictions, tone: data.contradictions > 0 ? "negative" : "positive" },
     ],
   };
@@ -425,7 +430,10 @@ export function buildEntryBlocks(data: AnalyzeEntryOutput): {
       content: ["**Leg relationships:**", ...flagged.map((c) => `- ${c.a} ↔ ${c.b}: r=${c.correlation}${c.contradiction ? " ⚠️ contradiction" : ""} — ${c.note}`)].join("\n"),
     });
   }
-  const answer = `${data.size}-leg ${data.entryType}: P(all win) ${pct(data.probAllWin)}, expected payout ${data.expectedPayout}× (${data.payoutTable}). ${data.contradictions > 0 ? `${data.contradictions} contradictory leg pair(s) detected.` : "No contradictions detected."} This is not a lock or guarantee.`;
+  const econText = data.payoutConfigured && data.expectedReturn !== null
+    ? `expected return ${data.expectedReturn}× (payout ${data.payoutVersion})`
+    : "expected return withheld — payout configuration required";
+  const answer = `${data.size}-leg ${data.entryType} (${data.method}): P(all win) ${pct(data.probAllWin)}, ${econText}. ${data.contradictions > 0 ? `${data.contradictions} contradictory leg pair(s) detected.` : "No contradictions detected."} This is not a lock or guarantee.`;
   return {
     answer,
     blocks,

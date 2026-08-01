@@ -21,11 +21,15 @@ import { mlbStatsSource, modelSource } from "../mlb/_shared";
 export interface AnalyzeEntryOutput {
   entryType: "power" | "flex";
   size: number;
+  method: "joint-simulation" | "independence-approximation";
   legs: { label: string; market: string; direction: string; line: number; probWin: number; supported: boolean }[];
   distribution: number[];
   probAllWin: number;
-  expectedPayout: number;
-  payoutTable: string;
+  downsideProbability: number | null;
+  payoutConfigured: boolean;
+  expectedReturn: number | null;
+  expectedProfit: number | null;
+  payoutVersion: string | null;
   correlations: { a: string; b: string; correlation: number; sameUnit: boolean; contradiction: boolean; note: string }[];
   contradictions: number;
   warnings: string[];
@@ -51,9 +55,14 @@ export const analyzeEntryTool = defineTool<{ entryType?: "power" | "flex" }, Ana
   async execute(input, ctx): Promise<ToolResult<AnalyzeEntryOutput>> {
     const board = (ctx.prizePicksBoard ?? []).slice(0, 6);
     const entryType = input.entryType ?? "flex";
+    const emptyOut = (size: number): AnalyzeEntryOutput => ({
+      entryType, size, method: "joint-simulation", legs: [], distribution: [], probAllWin: 0,
+      downsideProbability: null, payoutConfigured: false, expectedReturn: null, expectedProfit: null,
+      payoutVersion: null, correlations: [], contradictions: 0, warnings: [],
+    });
     if (board.length < 2) {
       return {
-        data: { entryType, size: board.length, legs: [], distribution: [], probAllWin: 0, expectedPayout: 0, payoutTable: "n/a", correlations: [], contradictions: 0, warnings: [] },
+        data: emptyOut(board.length),
         sources: [],
         warnings: [`Entry analysis needs at least 2 imported legs; the board for ${ctx.date} has ${board.length}.`],
         summary: "Not enough legs for an entry",
@@ -99,7 +108,7 @@ export const analyzeEntryTool = defineTool<{ entryType?: "power" | "flex" }, Ana
 
     if (legs.length < 2) {
       return {
-        data: { entryType, size: legs.length, legs: [], distribution: [], probAllWin: 0, expectedPayout: 0, payoutTable: "n/a", correlations: [], contradictions: 0, warnings },
+        data: emptyOut(legs.length),
         sources: [makeSource({ name: "PrizePicks CSV/paste import", type: "prizepicks-import", dataAsOf: Date.now() })],
         warnings: [...warnings, "Fewer than 2 legs could be resolved to a simulation model."],
         summary: "Entry could not be resolved",
@@ -107,16 +116,21 @@ export const analyzeEntryTool = defineTool<{ entryType?: "power" | "flex" }, Ana
     }
 
     const analysis = analyzeEntry({ legs, entryType, iterations: 8000, seed: `entry:${ctx.date}` });
+    const econ = analysis.economics;
 
     return {
       data: {
         entryType: analysis.entryType,
         size: analysis.size,
+        method: analysis.method,
         legs: analysis.legs.map((l) => ({ label: l.label, market: l.market, direction: l.direction, line: l.line, probWin: Math.round(l.probWin * 1000) / 1000, supported: l.supported })),
         distribution: analysis.distribution.map((p) => Math.round(p * 1000) / 1000),
         probAllWin: Math.round(analysis.probAllWin * 1000) / 1000,
-        expectedPayout: analysis.payout.ev,
-        payoutTable: analysis.payout.table,
+        downsideProbability: analysis.downsideProbability ?? null,
+        payoutConfigured: econ.configured,
+        expectedReturn: econ.expectedReturn ?? null,
+        expectedProfit: econ.expectedProfit ?? null,
+        payoutVersion: econ.tableVersion,
         correlations: analysis.correlations.map((c) => ({ a: c.aLabel, b: c.bLabel, correlation: c.correlation, sameUnit: c.sameUnit, contradiction: c.contradiction, note: c.note })),
         contradictions: analysis.contradictions.length,
         warnings: analysis.warnings,
