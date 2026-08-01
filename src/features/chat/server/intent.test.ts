@@ -32,6 +32,14 @@ describe("intent classification", () => {
   test("data health / missing", () => {
     expect(classifyIntent("What data is missing today?").kind).toBe("data-health");
   });
+  test("entry analysis with power/flex detection", () => {
+    expect(classifyIntent("Analyze my entry").kind).toBe("entry-analysis");
+    expect(classifyIntent("Is my entry correlated?").kind).toBe("entry-analysis");
+    const power = classifyIntent("Analyze my power play entry");
+    expect(power.kind).toBe("entry-analysis");
+    expect(power.entryType).toBe("power");
+    expect(classifyIntent("Analyze my flex entry").entryType).toBe("flex");
+  });
   test("games/slate", () => {
     expect(classifyIntent("What games are on today?").kind).toBe("games");
   });

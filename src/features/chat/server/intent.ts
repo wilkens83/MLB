@@ -16,6 +16,7 @@ export type IntentKind =
   | "why"
   | "prizepicks-board"
   | "prizepicks-edges"
+  | "entry-analysis"
   | "data-health"
   | "followup-filter"
   | "unsupported"
@@ -36,6 +37,8 @@ export interface Intent {
   playerNames: string[];
   prop?: string;
   window?: number;
+  /** Power vs Flex, for entry analysis. */
+  entryType?: "power" | "flex";
   /** Set for unsupported/clarify to explain to the user. */
   note?: string;
 }
@@ -143,6 +146,16 @@ export function classifyIntent(
   // Unsupported domains — answer honestly, never fabricate.
   for (const u of UNSUPPORTED) {
     if (u.re.test(text)) return { kind: "unsupported", filters, playerNames: names, note: u.note, prop };
+  }
+
+  // Entry analysis (correlation-aware, complete-entry) — check before generic PrizePicks.
+  if (/\bentry\b|\bparlay\b|correlat|contradict|\b(flex|power)(?:\s*play)?\b/.test(text)) {
+    const entryType: "power" | "flex" | undefined = /\bpower\b/.test(text)
+      ? "power"
+      : /\bflex\b/.test(text)
+        ? "flex"
+        : undefined;
+    return { kind: "entry-analysis", filters, playerNames: [], window, entryType };
   }
 
   // PrizePicks.
