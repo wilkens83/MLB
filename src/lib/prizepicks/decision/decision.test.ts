@@ -21,28 +21,46 @@ function cleanEntry(legs: LegFacts[], over: Partial<EntryFacts> = {}): EntryFact
     legs, entryFormat: "power", method: "joint-simulation",
     payoutConfigured: true, payoutTableId: "pp-default-2026.1-power-2", payoutTableVersion: "pp-default-2026.1",
     economics: { configured: true, expectedReturn: 1.2, expectedProfit: 0.2, variance: 0.5, downsideProbability: 0.4 },
+    payoutVerified: true,
     modelVersion: "2.0.0-statcast", featureCutoff: "2026-07-31T22:00:00Z", dataAsOf: "2026-07-31T22:00:00Z",
     ...over,
   };
 }
 const ev = (e: EntryFacts) => evaluateEntry(e, DEFAULT_DECISION_POLICY);
 
-describe("BET decisions", () => {
-  test("BET_MORE when everything clears", () => {
+describe("BET / APPROVE_ENTRY decisions", () => {
+  test("APPROVE_ENTRY (entry) with BET_MORE legs when everything clears", () => {
     const r = ev(cleanEntry([cleanLeg(), cleanLeg({ playerId: 2 })]));
-    expect(r.entryDecision.decision).toBe("BET_MORE");
+    expect(r.entryDecision.decision).toBe("APPROVE_ENTRY");
     expect(r.legDecisions.every((d) => d.decision === "BET_MORE")).toBe(true);
     expect(r.entryDecision.vetoes).toHaveLength(0);
   });
-  test("BET_LESS when the Less side clears", () => {
+  test("BET_LESS legs when the Less side clears; entry still APPROVE_ENTRY", () => {
     const less = cleanLeg({ probabilityMore: 0.34, probabilityLess: 0.66 });
     const r = ev(cleanEntry([less, cleanLeg({ playerId: 2, probabilityMore: 0.33, probabilityLess: 0.67 })]));
-    expect(r.entryDecision.decision).toBe("BET_LESS");
+    expect(r.entryDecision.decision).toBe("APPROVE_ENTRY");
+    expect(r.legDecisions.every((d) => d.decision === "BET_LESS")).toBe(true);
   });
-  test("every result validates against the Zod schema", () => {
+  test("a mixed-direction entry is APPROVE_ENTRY, not BET_MORE", () => {
+    const more = cleanLeg({ probabilityMore: 0.66, probabilityLess: 0.34 });
+    const less = cleanLeg({ playerId: 2, probabilityMore: 0.34, probabilityLess: 0.66 });
+    const r = ev(cleanEntry([more, less]));
+    expect(r.entryDecision.decision).toBe("APPROVE_ENTRY");
+    expect(new Set(r.legDecisions.map((d) => d.decision))).toEqual(new Set(["BET_MORE", "BET_LESS"]));
+  });
+  test("every result validates against the Zod schema (with subject/decision refinement)", () => {
     const r = ev(cleanEntry([cleanLeg(), cleanLeg({ playerId: 2 })]));
     expect(decisionResultSchema.safeParse(r.entryDecision).success).toBe(true);
     expect(r.legDecisions.every((d) => decisionResultSchema.safeParse(d).success)).toBe(true);
+    expect(r.entryDecision.inputHash).toMatch(/^[0-9a-f]{8}$/);
+  });
+});
+
+describe("payout verification (Phase 8)", () => {
+  test("a generic (unverified) default payout blocks a firm decision → NO_BET", () => {
+    const r = ev(cleanEntry([cleanLeg(), cleanLeg({ playerId: 2 })], { payoutVerified: false }));
+    expect(r.entryDecision.decision).toBe("NO_BET");
+    expect(r.entryDecision.vetoes.some((v) => v.code === "PAYOUT_UNVERIFIED")).toBe(true);
   });
 });
 
@@ -111,6 +129,50 @@ describe("UNAVAILABLE decisions", () => {
   test("both sides qualify → contradiction", () => expect(un({ probabilityMore: 0.7, probabilityLess: 0.7 })).toBe("UNAVAILABLE"));
 });
 
+describe("scientific circuit breakers (Phase 14)", () => {
+  test("degraded calibration blocks a firm BET → NO_BET", () => {
+    const r = ev(cleanEntry([cleanLeg({ calibrationDegraded: true }), cleanLeg({ playerId: 2 })]));
+    expect(r.entryDecision.decision).toBe("NO_BET");
+    expect(r.legDecisions[0].vetoes.some((v) => v.code === "CIRCUIT_BREAKER")).toBe(true);
+  });
+  test("excessive feature drift blocks a firm BET → NO_BET", () => {
+    const r = ev(cleanEntry([cleanLeg({ featureDriftExceeded: true }), cleanLeg({ playerId: 2 })]));
+    expect(r.entryDecision.decision).toBe("NO_BET");
+    expect(r.legDecisions[0].vetoes.some((v) => v.code === "CIRCUIT_BREAKER")).toBe(true);
+  });
+  test("inputs outside training support block a firm BET → NO_BET", () => {
+    const r = ev(cleanEntry([cleanLeg({ outsideTrainingSupport: true }), cleanLeg({ playerId: 2 })]));
+    expect(r.entryDecision.decision).toBe("NO_BET");
+  });
+  test("a missing required simulation dependency is UNAVAILABLE", () => {
+    const r = ev(cleanEntry([cleanLeg({ requiredSimDependencyUnavailable: true }), cleanLeg({ playerId: 2 })]));
+    expect(r.entryDecision.decision).toBe("UNAVAILABLE");
+    expect(r.legDecisions[0].vetoes.some((v) => v.code === "CIRCUIT_BREAKER")).toBe(true);
+  });
+});
+
+describe("model-lifecycle gating (Phase 12)", () => {
+  const state = (s: LegFacts["marketValidationState"]) =>
+    ev(cleanEntry([cleanLeg({ marketValidationState: s }), cleanLeg({ playerId: 2, marketValidationState: s })])).entryDecision.decision;
+  test("VALIDATED and PRODUCTION are BET-eligible → APPROVE_ENTRY", () => {
+    expect(state("VALIDATED")).toBe("APPROVE_ENTRY");
+    expect(state("PRODUCTION")).toBe("APPROVE_ENTRY");
+  });
+  test("DEVELOPMENT / BACKTEST_ONLY / SHADOW / PROVISIONAL are not BET-eligible by default → NO_BET", () => {
+    for (const s of ["DEVELOPMENT", "BACKTEST_ONLY", "SHADOW", "PROVISIONAL"] as const) {
+      expect(state(s)).toBe("NO_BET");
+    }
+  });
+  test("PROVISIONAL becomes eligible only when the policy allows it", () => {
+    const provisional = cleanEntry([cleanLeg({ marketValidationState: "PROVISIONAL" }), cleanLeg({ playerId: 2, marketValidationState: "PROVISIONAL" })]);
+    expect(evaluateEntry(provisional, { ...DEFAULT_DECISION_POLICY, allowProvisionalMarkets: true }).entryDecision.decision).toBe("APPROVE_ENTRY");
+  });
+  test("not-eligible states carry a MARKET_NOT_ELIGIBLE veto", () => {
+    const r = ev(cleanEntry([cleanLeg({ marketValidationState: "SHADOW" }), cleanLeg({ playerId: 2 })]));
+    expect(r.legDecisions[0].vetoes.some((v) => v.code === "MARKET_NOT_ELIGIBLE")).toBe(true);
+  });
+});
+
 describe("precedence + vetoes", () => {
   test("veto precedence: UNAVAILABLE dominates a low-probability NO_BET", () => {
     const r = ev(cleanEntry([cleanLeg({ playerResolved: false, probabilityMore: 0.51, probabilityLess: 0.49 }), cleanLeg({ playerId: 2 })]));
@@ -121,9 +183,9 @@ describe("precedence + vetoes", () => {
     const rejected = cleanLeg({ playerId: 2, probabilityMore: 0.5, probabilityLess: 0.5 }); // NO_BET
     expect(ev(cleanEntry([waiting, rejected])).entryDecision.decision).toBe("WAIT");
   });
-  test("a BET is impossible whenever any veto exists", () => {
+  test("a BET/APPROVE is impossible whenever any veto exists", () => {
     const r = ev(cleanEntry([cleanLeg({ marketValidationState: "SUSPENDED" }), cleanLeg({ playerId: 2 })]));
-    expect(["BET_MORE", "BET_LESS"]).not.toContain(r.entryDecision.decision);
+    expect(["BET_MORE", "BET_LESS", "APPROVE_ENTRY"]).not.toContain(r.entryDecision.decision);
     expect(r.legDecisions[0].vetoes.length).toBeGreaterThan(0);
   });
   test("policy + model + payout versions are recorded on every decision", () => {

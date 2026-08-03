@@ -380,8 +380,9 @@ function formatAm(v: number): string {
 /* ---------------------------- firm decision ------------------------------- */
 
 const DECISION_LABEL: Record<string, string> = {
-  BET_MORE: "BET MORE", BET_LESS: "BET LESS", WAIT: "WAIT", NO_BET: "NO BET", UNAVAILABLE: "UNAVAILABLE",
+  APPROVE_ENTRY: "APPROVE ENTRY", BET_MORE: "BET MORE", BET_LESS: "BET LESS", WAIT: "WAIT", NO_BET: "NO BET", UNAVAILABLE: "UNAVAILABLE",
 };
+const isBet = (d: string) => d.startsWith("BET") || d === "APPROVE_ENTRY";
 
 export function buildDecisionBlocks(data: EntryDecisionOutput): {
   answer: string;
@@ -395,7 +396,7 @@ export function buildDecisionBlocks(data: EntryDecisionOutput): {
       type: "metric-grid",
       title: `Firm decision — ${label}`,
       metrics: [
-        { label: "Decision", value: label, tone: d.decision.startsWith("BET") ? "positive" : d.decision === "NO_BET" ? "negative" : "default" },
+        { label: "Decision", value: label, tone: isBet(d.decision) ? "positive" : d.decision === "NO_BET" ? "negative" : "default" },
         { label: "Exp. return", value: d.entryExpectedReturn != null ? `${d.entryExpectedReturn}×` : "—" },
         { label: "Downside", value: d.downsideProbability != null ? pct(d.downsideProbability) : "—" },
         { label: "Policy", value: d.decisionPolicyVersion, tone: "brand" },
@@ -428,7 +429,7 @@ export function buildDecisionBlocks(data: EntryDecisionOutput): {
   if (d.decision === "WAIT" && d.releaseConditions?.length) {
     blocks.push({ type: "markdown", content: ["**To release this WAIT:**", ...d.releaseConditions.map((c) => `- ${c}`), d.nextReviewAt ? `\nNext review ~${new Date(d.nextReviewAt).toLocaleTimeString()}.` : ""].join("\n") });
   }
-  const answer = `Firm decision: **${label}** for this ${d.subjectType === "ENTRY" ? "entry" : "leg"} (policy ${d.decisionPolicyVersion}, ${data.marketMode}). ${d.decision.startsWith("BET") ? "This is a rules-based research decision, not a guarantee." : ""}`.trim();
+  const answer = `Firm decision: **${label}** for this ${d.subjectType === "ENTRY" ? "entry" : "leg"} (policy ${d.decisionPolicyVersion}, ${data.marketMode}). ${isBet(d.decision) ? "This is a rules-based research decision, not a guarantee." : ""}`.trim();
   return {
     answer,
     blocks,

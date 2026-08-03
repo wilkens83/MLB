@@ -6,7 +6,7 @@
    impossible. A BET can only be produced when NO condition triggers.
    ========================================================================== */
 
-import type { DecisionPolicy, DecisionReason, DecisionVeto, MarketValidationState } from "./types";
+import { isBetEligibleState, type DecisionPolicy, type DecisionReason, type DecisionVeto, type MarketValidationState } from "./types";
 import { reason, veto, VETO } from "./reasons";
 
 /** Normalized facts about one leg, computed upstream from real data. */
@@ -59,6 +59,12 @@ export interface LegFacts {
 
   // market model validation
   marketValidationState: MarketValidationState;
+
+  // scientific circuit breakers (any one suspends firm BET for this leg)
+  calibrationDegraded?: boolean;
+  featureDriftExceeded?: boolean;
+  outsideTrainingSupport?: boolean;
+  requiredSimDependencyUnavailable?: boolean;
 }
 
 /** Hard floors independent of the (softer) BET thresholds. */
@@ -161,13 +167,37 @@ export function computeLegGates(f: LegFacts, policy: DecisionPolicy): GateResult
     noBet.push(reason("FRAGILITY_CEILING", "FRAGILITY", "CRITICAL", `Fragility ${f.fragilityScore} above hard ceiling ${HARD_FRAGILITY_CEILING}.`, f.fragilityScore, HARD_FRAGILITY_CEILING));
     block(veto(VETO.FRAGILITY_CEILING, "Fragility above hard ceiling."));
   }
-  if (f.marketValidationState === "SUSPENDED") {
-    noBet.push(reason("MARKET_SUSPENDED", "MODEL_VALIDATION", "CRITICAL", "Market is SUSPENDED due to drift/calibration failure."));
-    block(veto(VETO.MARKET_SUSPENDED, "Market suspended."));
+  // Model-lifecycle gate: only VALIDATED/PRODUCTION (or PROVISIONAL by policy)
+  // may produce a firm BET; every other state blocks it.
+  if (!isBetEligibleState(f.marketValidationState, policy.allowProvisionalMarkets ?? false)) {
+    if (f.marketValidationState === "SUSPENDED") {
+      noBet.push(reason("MARKET_SUSPENDED", "MODEL_VALIDATION", "CRITICAL", "Market model is SUSPENDED (drift/calibration failure)."));
+      block(veto(VETO.MARKET_SUSPENDED, "Market model suspended."));
+    } else if (f.marketValidationState === "RESEARCH_ONLY") {
+      noBet.push(reason("MARKET_RESEARCH_ONLY", "MODEL_VALIDATION", "WARNING", "Market model is RESEARCH_ONLY — firm BET prohibited."));
+      block(veto(VETO.MARKET_RESEARCH_ONLY, "Market model is research-only."));
+    } else {
+      noBet.push(reason("MARKET_NOT_ELIGIBLE", "MODEL_VALIDATION", "WARNING", `Market model state ${f.marketValidationState} is not eligible for firm BET.`, f.marketValidationState));
+      block(veto(VETO.MARKET_NOT_ELIGIBLE, `Model state ${f.marketValidationState} not BET-eligible.`));
+    }
   }
-  if (f.marketValidationState === "RESEARCH_ONLY") {
-    noBet.push(reason("MARKET_RESEARCH_ONLY", "MODEL_VALIDATION", "WARNING", "Market is RESEARCH_ONLY — firm BET decisions are prohibited."));
-    block(veto(VETO.MARKET_RESEARCH_ONLY, "Market is research-only."));
+
+  // Scientific circuit breakers.
+  if (f.requiredSimDependencyUnavailable) {
+    unavailable.push(reason("CB_DEPENDENCY", "PROVIDER", "CRITICAL", "A required simulation dependency is unavailable."));
+    block(veto(VETO.CIRCUIT_BREAKER, "Circuit breaker: required simulation dependency unavailable."));
+  }
+  if (f.calibrationDegraded) {
+    noBet.push(reason("CB_CALIBRATION", "MODEL_VALIDATION", "CRITICAL", "Circuit breaker: model calibration has degraded beyond threshold."));
+    block(veto(VETO.CIRCUIT_BREAKER, "Circuit breaker: calibration degraded."));
+  }
+  if (f.featureDriftExceeded) {
+    noBet.push(reason("CB_DRIFT", "MODEL_VALIDATION", "CRITICAL", "Circuit breaker: feature drift exceeds threshold."));
+    block(veto(VETO.CIRCUIT_BREAKER, "Circuit breaker: feature drift exceeded."));
+  }
+  if (f.outsideTrainingSupport) {
+    noBet.push(reason("CB_SUPPORT", "MODEL_VALIDATION", "CRITICAL", "Circuit breaker: inputs are outside the model's training support."));
+    block(veto(VETO.CIRCUIT_BREAKER, "Circuit breaker: inputs outside training support."));
   }
 
   return { unavailable, wait, noBet, vetoes, info };

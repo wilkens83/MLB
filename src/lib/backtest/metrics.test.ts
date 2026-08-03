@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { computeBacktest, type ProjectionSnapshot, type GradedResult } from "./metrics";
+import { compareToBaselines, computeBacktest, type ProjectionSnapshot, type GradedResult } from "./metrics";
 
 let seq = 0;
 function snap(p: Partial<ProjectionSnapshot> = {}): ProjectionSnapshot {
@@ -20,6 +20,7 @@ function snap(p: Partial<ProjectionSnapshot> = {}): ProjectionSnapshot {
     capturedAt: p.capturedAt ?? `2026-07-0${(seq % 9) + 1}T18:00:00Z`,
     gameStartAt: p.gameStartAt ?? `2026-07-0${(seq % 9) + 1}T23:00:00Z`,
     featureCutoff: p.featureCutoff,
+    baselineProbWin: p.baselineProbWin,
   };
 }
 const res = (id: string, grade: GradedResult["grade"], actual = 0): GradedResult => ({ id, grade, actual });
@@ -104,5 +105,42 @@ describe("MAE / RMSE + segmentation", () => {
     ];
     const r = computeBacktest(snaps, [res("a", "win"), res("b", "loss"), res("c", "loss"), res("d", "loss")]);
     expect(r.maxDrawdown).toBe(3);
+  });
+});
+
+describe("compareToBaselines — every model must beat naive baselines", () => {
+  test("always scores the model plus coin-flip and shrink baselines", () => {
+    seq = 0;
+    const snaps = [snap({ id: "a", probWin: 0.9 }), snap({ id: "b", probWin: 0.8 })];
+    const { model, baselines } = compareToBaselines(snaps, [res("a", "win"), res("b", "win")]);
+    expect(model.name).toBe("model");
+    expect(model.n).toBe(2);
+    expect(baselines.map((b) => b.name)).toEqual(["coin-flip", "shrink-to-0.5"]);
+    // A confident, correct model beats a coin flip on Brier.
+    expect(model.brier).toBeLessThan(baselines[0].brier);
+  });
+
+  test("a coin-flip baseline scores Brier 0.25", () => {
+    seq = 0;
+    const snaps = [snap({ id: "a", probWin: 0.6 }), snap({ id: "b", probWin: 0.6 })];
+    const { baselines } = compareToBaselines(snaps, [res("a", "win"), res("b", "loss")]);
+    expect(baselines[0].name).toBe("coin-flip");
+    expect(baselines[0].brier).toBeCloseTo(0.25, 6);
+  });
+
+  test("adds a provided-baseline series when snapshots carry baselineProbWin", () => {
+    seq = 0;
+    const snaps = [snap({ id: "a", probWin: 0.7, baselineProbWin: 0.55 }), snap({ id: "b", probWin: 0.7, baselineProbWin: 0.55 })];
+    const { baselines } = compareToBaselines(snaps, [res("a", "win"), res("b", "win")]);
+    expect(baselines.some((b) => b.name === "provided-baseline")).toBe(true);
+  });
+
+  test("excludes leaked and pushed pairs from the comparison", () => {
+    seq = 0;
+    const leaked = snap({ id: "leak", featureCutoff: "2026-07-01T23:30:00Z", gameStartAt: "2026-07-01T23:00:00Z" });
+    const pushed = snap({ id: "push" });
+    const clean = snap({ id: "ok" });
+    const { model } = compareToBaselines([leaked, pushed, clean], [res("leak", "win"), res("push", "push"), res("ok", "win")]);
+    expect(model.n).toBe(1);
   });
 });

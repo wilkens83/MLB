@@ -7,7 +7,7 @@
 
 import { DEFAULT_DECISION_POLICY } from "./policy";
 import { DECISION_ENGINE_VERSION, configChecksum } from "./version";
-import { decisionResultSchema, type DecisionPolicy, type DecisionReason, type DecisionResult, type DecisionVeto, type FinalDecision } from "./types";
+import { decisionResultSchema, type AnyDecision, type DecisionPolicy, type DecisionReason, type DecisionResult, type DecisionVeto, type FinalDecision } from "./types";
 import { evaluateLeg, type LegEvaluation } from "./evaluate-leg";
 import type { LegFacts } from "./veto";
 import { reason, veto, VETO } from "./reasons";
@@ -33,9 +33,12 @@ export interface EntryFacts {
   /** Correlation is material but not captured by the (independence) method. */
   correlationMaterialButUnmodeled?: boolean;
   correlationConcentration?: boolean;
+  /** True only for a verified/admin/manually-confirmed payout (NOT a generic default). */
+  payoutVerified?: boolean;
   modelVersion: string;
   featureCutoff: string;
   dataAsOf: string;
+  eventStartTime?: string;
   generatedAt?: string;
   lineCapturedAt?: string;
 }
@@ -85,6 +88,14 @@ function entryGates(entry: EntryFacts, policy: DecisionPolicy): {
     }
   }
 
+  // Payout verification: a generic default table may support research estimates
+  // but must NOT authorize a firm BET — only a verified/admin/manual payout can.
+  if (policy.requirePayoutTable && entry.payoutConfigured && entry.payoutVerified === false) {
+    vetoes.push(veto(VETO.PAYOUT_UNVERIFIED, "Payout is a generic research default (not verified) — firm BET prohibited."));
+    reasons.push(reason("PAYOUT_UNVERIFIED", "PAYOUT", "WARNING", "Entry EV uses a generic default payout table; verify the actual entry payout before a firm decision."));
+    worse("NO_BET");
+  }
+
   if (entry.method === "independence-approximation" && entry.correlationMaterialButUnmodeled) {
     vetoes.push(veto(VETO.UNMODELED_CORRELATION, "Material correlation not modeled (independence approximation) — BET prohibited."));
     reasons.push(reason("UNMODELED_CORRELATION", "CORRELATION", "CRITICAL", "Legs are likely correlated but only an independence approximation is available."));
@@ -105,7 +116,7 @@ function timestamps(entry: EntryFacts) {
 
 function build(
   subjectType: "LEG" | "ENTRY",
-  decision: FinalDecision,
+  decision: AnyDecision,
   policy: DecisionPolicy,
   entry: EntryFacts,
   fields: Partial<DecisionResult>,
@@ -114,6 +125,7 @@ function build(
   release: string[],
 ): DecisionResult {
   const ts = timestamps(entry);
+  const inputHash = configChecksum({ legs: entry.legs, economics: entry.economics, payoutTableVersion: entry.payoutTableVersion, method: entry.method });
   const result: DecisionResult = {
     decision,
     subjectType,
@@ -121,12 +133,15 @@ function build(
     decisionPolicyVersion: policy.version,
     modelVersion: entry.modelVersion,
     configChecksum: configChecksum({ engine: DECISION_ENGINE_VERSION, policy }),
+    inputHash,
     generatedAt: ts.generatedAt,
     featureCutoff: ts.featureCutoff,
     dataAsOf: ts.dataAsOf,
+    eventStartTime: entry.eventStartTime,
     lineCapturedAt: entry.lineCapturedAt,
     payoutTableId: entry.payoutTableId ?? null,
     payoutTableVersion: entry.payoutTableVersion ?? null,
+    payoutVerified: entry.payoutVerified,
     method: entry.method,
     reasons,
     vetoes,
@@ -151,14 +166,15 @@ export function evaluateEntry(entry: EntryFacts, policy: DecisionPolicy = DEFAUL
   const anyWait = legEvals.some((l) => l.candidate === "WAITING") || gates.klass === "WAIT";
   const anyNoBet = legEvals.some((l) => l.candidate === "REJECTED") || gates.klass === "NO_BET";
 
-  let entryDecisionState: FinalDecision;
+  let entryDecisionState: AnyDecision;
   if (anyUnavailable) entryDecisionState = "UNAVAILABLE";
   else if (anyWait) entryDecisionState = "WAIT";
   else if (anyNoBet) entryDecisionState = "NO_BET";
   else {
-    // All legs are candidates and entry EV cleared → bettable.
-    const sides = new Set(legEvals.map((l) => l.side));
-    entryDecisionState = sides.size === 1 && sides.has("less") ? "BET_LESS" : "BET_MORE";
+    // All legs are candidates and the entry cleared every gate → the whole entry
+    // is approvable. Directional BET_MORE/BET_LESS live on the per-leg decisions;
+    // a (possibly mixed-direction) entry is never labeled BET_MORE.
+    entryDecisionState = "APPROVE_ENTRY";
   }
 
   const entryReasons: DecisionReason[] = [

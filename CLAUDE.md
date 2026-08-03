@@ -195,22 +195,37 @@ namespace and reuses the pure core.
   loss, calibration buckets, MAE/RMSE, by-segment (market/prob/confidence/lineup/
   model-version), even-money drawdown proxy. Strictly chronological: snapshots
   with a feature cutoff after game start are excluded as leakage; thin samples are
-  flagged and profitability is never claimed from them. Pure + tested.
+  flagged and profitability is never claimed from them. `compareToBaselines()`
+  scores the model against a coin-flip, shrink-to-0.5, and any captured
+  per-snapshot baseline on the same graded pairs — a model that can't beat naive
+  baselines is not validated. `drift.ts` adds Population Stability Index
+  (`populationStabilityIndex`/`classifyDrift`/`assessDrift`) for input-distribution
+  drift, feeding the decision engine's drift circuit breaker. Pure + tested.
 
 - **Firm decision engine (`src/lib/prizepicks/decision/`, `/decisions`,
-  `/api/prizepicks/decision`).** Turns a complete entry into exactly one of five
-  FINAL states — `BET_MORE` / `BET_LESS` / `WAIT` / `NO_BET` / `UNAVAILABLE` — via
-  a versioned conservative `DecisionPolicy`, a **mandatory veto engine** (`veto.ts`)
-  that runs before any decision, and strict precedence (UNAVAILABLE > WAIT >
-  NO_BET > BET). Leg direction (`evaluate-leg.ts`) is separate from the final
-  entry action (`evaluate-entry.ts`); a firm BET is only produced at the entry
-  level and requires the versioned payout-engine entry EV to clear. A real
-  sensitivity sweep (`sensitivity.ts`) feeds fragility + worst-case; a
-  market-validation gate (`market-validation.ts`, RESEARCH_ONLY→VALIDATED) controls
-  BET eligibility (defaults to RESEARCH_ONLY, so live BET is intentionally rare).
-  Decisions are Zod-validated and persisted immutably (`store.ts`). The chat
-  `getEntryDecision` tool returns the canonical result and never overrides a veto.
-  "Firm" ≠ certain. Design docs: `docs/DECISION_ENGINE_REQUIREMENTS.md`.
+  `/api/prizepicks/decision`).** Legs resolve to directional `BET_MORE` /
+  `BET_LESS` / `WAIT` / `NO_BET` / `UNAVAILABLE`; a complete entry resolves to
+  `APPROVE_ENTRY` / `WAIT` / `NO_BET` / `UNAVAILABLE` — a mixed-direction entry is
+  `APPROVE_ENTRY`, never mislabeled `BET_MORE` (Zod `superRefine` enforces
+  leg≠APPROVE_ENTRY and entry≠directional-BET). Driven by a versioned conservative
+  `DecisionPolicy`, a **mandatory veto engine** (`veto.ts`) that runs before any
+  decision, and strict precedence (UNAVAILABLE > WAIT > NO_BET > BET). A firm BET
+  is only produced at the entry level and requires the versioned payout-engine
+  entry EV to clear; a generic/unverified payout (`payoutVerified === false`)
+  vetoes it. A real sensitivity sweep (`sensitivity.ts`) feeds fragility +
+  worst-case. The market-validation gate is a full nine-state model lifecycle
+  (`DEVELOPMENT`/`BACKTEST_ONLY`/`SHADOW`/`RESEARCH_ONLY`/`PROVISIONAL`/`VALIDATED`/
+  `PRODUCTION`/`SUSPENDED`/`RETIRED`); only `VALIDATED`/`PRODUCTION` (and
+  `PROVISIONAL` by explicit policy) are BET-eligible (`isBetEligibleState`), and
+  it defaults to RESEARCH_ONLY so live BET is intentionally rare. Scientific
+  circuit breakers (calibration degraded / feature drift / outside training
+  support → NO_BET; missing sim dependency → UNAVAILABLE) route through the veto
+  engine. Every `DecisionResult` carries provenance (`eventStartTime`,
+  `inputHash`, policy/model/payout versions, `configChecksum`), is Zod-validated,
+  and is persisted immutably (`store.ts`). The chat `getEntryDecision` tool
+  returns the canonical result and never overrides a veto. "Firm" ≠ certain.
+  Design docs: `docs/DECISION_ENGINE_REQUIREMENTS.md`,
+  `docs/SCIENTIFIC_QUALITY_PROGRESS.md`.
 
 Other route-level pieces: `src/lib/mlb/slate.ts` + `/slate` (multi-game daily
 board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`

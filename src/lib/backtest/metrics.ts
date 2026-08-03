@@ -31,6 +31,9 @@ export interface ProjectionSnapshot {
   capturedAt: string; // ISO
   gameStartAt?: string; // ISO
   featureCutoff?: string; // ISO — latest data timestamp allowed into the projection
+  /** Optional baseline probability for the picked side (e.g. season-mean model),
+      captured at the same point-in-time — used for baseline comparison. */
+  baselineProbWin?: number;
 }
 
 export interface GradedResult {
@@ -228,4 +231,52 @@ export function computeBacktest(
     maxDrawdown,
     warnings,
   };
+}
+
+/* ------------------------- baseline comparison ---------------------------- */
+
+export interface BaselineScore {
+  name: string;
+  n: number;
+  brier: number;
+  logLoss: number;
+}
+
+/**
+ * Chronological baseline comparison. Every sophisticated model must beat naive
+ * baselines. Scores the model's probWin and each baseline (a coin flip, a
+ * shrink-to-0.5, and any per-snapshot `baselineProbWin`) with Brier + log loss
+ * over the same graded, non-leaked pairs. Lower is better.
+ */
+export function compareToBaselines(
+  snapshots: ProjectionSnapshot[],
+  results: GradedResult[],
+): { model: BaselineScore; baselines: BaselineScore[] } {
+  const byId = new Map(results.map((r) => [r.id, r]));
+  const rows: { p: number; y: number; baseline?: number }[] = [];
+  for (const snap of snapshots) {
+    if (snap.featureCutoff && snap.gameStartAt && Date.parse(snap.featureCutoff) > Date.parse(snap.gameStartAt)) continue;
+    const res = byId.get(snap.id);
+    if (!res || res.grade === "push") continue;
+    rows.push({ p: clampP(snap.probWin), y: res.grade === "win" ? 1 : 0, baseline: snap.baselineProbWin });
+  }
+  const score = (name: string, prob: (r: (typeof rows)[number]) => number): BaselineScore => {
+    const n = rows.length;
+    const brier = n ? rows.reduce((s, r) => s + (clampP(prob(r)) - r.y) ** 2, 0) / n : 0;
+    const logLoss = n
+      ? -rows.reduce((s, r) => {
+          const p = clampP(prob(r));
+          return s + (r.y * Math.log(p) + (1 - r.y) * Math.log(1 - p));
+        }, 0) / n
+      : 0;
+    return { name, n, brier: round(brier), logLoss: round(logLoss) };
+  };
+  const baselines: BaselineScore[] = [
+    score("coin-flip", () => 0.5),
+    score("shrink-to-0.5", (r) => 0.5 + (r.p - 0.5) * 0.5),
+  ];
+  if (rows.some((r) => r.baseline !== undefined)) {
+    baselines.push(score("provided-baseline", (r) => r.baseline ?? 0.5));
+  }
+  return { model: score("model", (r) => r.p), baselines };
 }

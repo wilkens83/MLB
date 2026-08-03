@@ -29,6 +29,7 @@ export const DEFAULT_DECISION_POLICY: DecisionPolicy = {
 
   minimumForwardSampleByMarket: 100,
   minimumCalibrationGrade: "PROVISIONAL",
+  allowProvisionalMarkets: false,
 
   source: "application-config",
   createdAt: "2026-01-01T00:00:00Z",
