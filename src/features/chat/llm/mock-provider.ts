@@ -111,6 +111,8 @@ async function route(intent: Intent, input: ProviderInput): Promise<Composed> {
       return composeEdges(input, intent.filters);
     case "entry-analysis":
       return composeEntry(input, intent);
+    case "entry-decision":
+      return composeDecision(input, intent);
     case "data-health":
       return composeHealth(input);
     case "followup-filter":
@@ -256,6 +258,15 @@ async function composeEntry(input: ProviderInput, intent: Intent): Promise<Compo
   );
   const b = build.buildEntryBlocks(res.data);
   return { ...b, sources: res.sources, warnings: res.warnings, state: { kind: "entry-analysis", date: input.context.date } };
+}
+
+async function composeDecision(input: ProviderInput, intent: Intent): Promise<Composed> {
+  const res = await input.invoke<import("../tools/prizepicks/entry-decision").EntryDecisionOutput>(
+    "getEntryDecision",
+    intent.entryType ? { entryType: intent.entryType } : {},
+  );
+  const b = build.buildDecisionBlocks(res.data);
+  return { ...b, sources: res.sources, warnings: res.warnings, state: { kind: "entry-decision", date: input.context.date } };
 }
 
 async function composeHealth(input: ProviderInput): Promise<Composed> {

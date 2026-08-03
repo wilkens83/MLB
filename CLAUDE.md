@@ -197,6 +197,21 @@ namespace and reuses the pure core.
   with a feature cutoff after game start are excluded as leakage; thin samples are
   flagged and profitability is never claimed from them. Pure + tested.
 
+- **Firm decision engine (`src/lib/prizepicks/decision/`, `/decisions`,
+  `/api/prizepicks/decision`).** Turns a complete entry into exactly one of five
+  FINAL states — `BET_MORE` / `BET_LESS` / `WAIT` / `NO_BET` / `UNAVAILABLE` — via
+  a versioned conservative `DecisionPolicy`, a **mandatory veto engine** (`veto.ts`)
+  that runs before any decision, and strict precedence (UNAVAILABLE > WAIT >
+  NO_BET > BET). Leg direction (`evaluate-leg.ts`) is separate from the final
+  entry action (`evaluate-entry.ts`); a firm BET is only produced at the entry
+  level and requires the versioned payout-engine entry EV to clear. A real
+  sensitivity sweep (`sensitivity.ts`) feeds fragility + worst-case; a
+  market-validation gate (`market-validation.ts`, RESEARCH_ONLY→VALIDATED) controls
+  BET eligibility (defaults to RESEARCH_ONLY, so live BET is intentionally rare).
+  Decisions are Zod-validated and persisted immutably (`store.ts`). The chat
+  `getEntryDecision` tool returns the canonical result and never overrides a veto.
+  "Firm" ≠ certain. Design docs: `docs/DECISION_ENGINE_REQUIREMENTS.md`.
+
 Other route-level pieces: `src/lib/mlb/slate.ts` + `/slate` (multi-game daily
 board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
 (team/game markets — NRFI, totals, run line). Design/consolidation docs live in

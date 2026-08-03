@@ -13,6 +13,7 @@ import { getDataHealthTool } from "./mlb/get-data-health";
 import { getPrizePicksBoardTool } from "./prizepicks/get-board";
 import { getPrizePicksEdgesTool } from "./prizepicks/rank-edges";
 import { analyzeEntryTool } from "./prizepicks/analyze-entry";
+import { getEntryDecisionTool } from "./prizepicks/entry-decision";
 import type { ChatToolDefinition } from "./types";
 
 /** All tools, in a stable order. */
@@ -27,6 +28,7 @@ export const ALL_TOOLS: ChatToolDefinition[] = [
   getPrizePicksBoardTool as ChatToolDefinition,
   getPrizePicksEdgesTool as ChatToolDefinition,
   analyzeEntryTool as ChatToolDefinition,
+  getEntryDecisionTool as ChatToolDefinition,
 ];
 
 /** Build a fresh registry with every tool registered. */

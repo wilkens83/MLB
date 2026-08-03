@@ -15,6 +15,7 @@ import type { DataHealthOutput } from "../tools/mlb/get-data-health";
 import type { PrizePicksBoardOutput } from "../tools/prizepicks/get-board";
 import type { PrizePicksEdgesOutput, EdgeRow } from "../tools/prizepicks/rank-edges";
 import type { AnalyzeEntryOutput } from "../tools/prizepicks/analyze-entry";
+import type { EntryDecisionOutput } from "../tools/prizepicks/entry-decision";
 
 /* --------------------------- filtering (follow-ups) ----------------------- */
 
@@ -374,6 +375,65 @@ export function buildEdgesBlocks(data: PrizePicksEdgesOutput): {
 
 function formatAm(v: number): string {
   return v > 0 ? `+${v}` : `${v}`;
+}
+
+/* ---------------------------- firm decision ------------------------------- */
+
+const DECISION_LABEL: Record<string, string> = {
+  BET_MORE: "BET MORE", BET_LESS: "BET LESS", WAIT: "WAIT", NO_BET: "NO BET", UNAVAILABLE: "UNAVAILABLE",
+};
+
+export function buildDecisionBlocks(data: EntryDecisionOutput): {
+  answer: string;
+  blocks: ChatResponseBlock[];
+  suggested: string[];
+} {
+  const d = data.entryDecision;
+  const label = DECISION_LABEL[d.decision] ?? d.decision;
+  const blocks: ChatResponseBlock[] = [
+    {
+      type: "metric-grid",
+      title: `Firm decision — ${label}`,
+      metrics: [
+        { label: "Decision", value: label, tone: d.decision.startsWith("BET") ? "positive" : d.decision === "NO_BET" ? "negative" : "default" },
+        { label: "Exp. return", value: d.entryExpectedReturn != null ? `${d.entryExpectedReturn}×` : "—" },
+        { label: "Downside", value: d.downsideProbability != null ? pct(d.downsideProbability) : "—" },
+        { label: "Policy", value: d.decisionPolicyVersion, tone: "brand" },
+      ],
+    },
+  ];
+  if (d.vetoes.length) {
+    blocks.push({ type: "markdown", content: ["**Vetoes (block any BET):**", ...d.vetoes.map((v) => `- ${v.code}: ${v.message}`)].join("\n") });
+  }
+  const critical = d.reasons.filter((r) => r.severity !== "INFO");
+  if (critical.length) {
+    blocks.push({ type: "markdown", content: ["**Reasons:**", ...critical.slice(0, 8).map((r) => `- [${r.severity}] ${r.message}`)].join("\n") });
+  }
+  if (data.legDecisions.length) {
+    blocks.push({
+      type: "table",
+      title: "Per-leg decisions",
+      columns: [
+        { key: "leg", label: "Leg" },
+        { key: "dec", label: "Decision" },
+        { key: "prob", label: "Sel. prob", format: "percent", align: "right" },
+      ],
+      rows: data.legDecisions.map((l) => ({
+        leg: `${l.market ?? "?"} ${l.line ?? ""}`.trim(),
+        dec: DECISION_LABEL[l.decision] ?? l.decision,
+        prob: l.selectedSideProbability ?? null,
+      })),
+    });
+  }
+  if (d.decision === "WAIT" && d.releaseConditions?.length) {
+    blocks.push({ type: "markdown", content: ["**To release this WAIT:**", ...d.releaseConditions.map((c) => `- ${c}`), d.nextReviewAt ? `\nNext review ~${new Date(d.nextReviewAt).toLocaleTimeString()}.` : ""].join("\n") });
+  }
+  const answer = `Firm decision: **${label}** for this ${d.subjectType === "ENTRY" ? "entry" : "leg"} (policy ${d.decisionPolicyVersion}, ${data.marketMode}). ${d.decision.startsWith("BET") ? "This is a rules-based research decision, not a guarantee." : ""}`.trim();
+  return {
+    answer,
+    blocks,
+    suggested: ["Why is this the decision?", "Show my PrizePicks board", "Which PrizePicks lines have the highest edge?"],
+  };
 }
 
 /* ---------------------------- entry analysis ------------------------------ */
