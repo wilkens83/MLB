@@ -149,6 +149,9 @@ export async function decideEntryFromBoard(input: DecideEntryInput): Promise<Dec
       downsideProbability: econ?.downsideProbability,
     },
     correlationConcentration: (econ?.contradictions.length ?? 0) > 0,
+    // Board economics use a GENERIC default payout table (not the verified entry
+    // payout), so a firm BET is blocked — research estimate only.
+    payoutVerified: false,
     modelVersion: MODEL_VERSION, featureCutoff: nowIso, dataAsOf: nowIso,
   };
 

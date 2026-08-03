@@ -8,8 +8,23 @@
 
 import { z } from "zod";
 
+/** Leg-level final decisions (directional). */
 export const finalDecisionSchema = z.enum(["BET_MORE", "BET_LESS", "WAIT", "NO_BET", "UNAVAILABLE"]);
 export type FinalDecision = z.infer<typeof finalDecisionSchema>;
+
+/**
+ * Entry-level final decisions. A complete (possibly mixed-direction) entry is
+ * never labeled BET_MORE just because it contains a More leg — a bettable entry
+ * is APPROVE_ENTRY. The blocking states are shared with leg decisions.
+ */
+export const entryDecisionSchema = z.enum(["APPROVE_ENTRY", "WAIT", "NO_BET", "UNAVAILABLE"]);
+export type EntryDecisionState = z.infer<typeof entryDecisionSchema>;
+
+/** Any decision value (leg or entry) — used by the persisted DecisionResult. */
+export const anyDecisionSchema = z.enum([
+  "BET_MORE", "BET_LESS", "APPROVE_ENTRY", "WAIT", "NO_BET", "UNAVAILABLE",
+]);
+export type AnyDecision = z.infer<typeof anyDecisionSchema>;
 
 /** Per-leg analytical direction — distinct from the final ENTRY action. */
 export const legCandidateSchema = z.enum([
@@ -45,13 +60,28 @@ export const decisionVetoSchema = z.object({
 });
 export type DecisionVeto = z.infer<typeof decisionVetoSchema>;
 
+/** Full model-lifecycle states. Only VALIDATED / PRODUCTION (and PROVISIONAL by
+    explicit policy) are eligible for firm BET decisions. */
 export const marketValidationStateSchema = z.enum([
+  "DEVELOPMENT",
+  "BACKTEST_ONLY",
+  "SHADOW",
   "RESEARCH_ONLY",
   "PROVISIONAL",
   "VALIDATED",
+  "PRODUCTION",
   "SUSPENDED",
+  "RETIRED",
 ]);
 export type MarketValidationState = z.infer<typeof marketValidationStateSchema>;
+
+/** Whether a model-validation state may produce a firm BET. PROVISIONAL requires
+    the explicit `allowProvisional` policy toggle + stricter thresholds. */
+export function isBetEligibleState(state: MarketValidationState, allowProvisional = false): boolean {
+  if (state === "VALIDATED" || state === "PRODUCTION") return true;
+  if (state === "PROVISIONAL") return allowProvisional;
+  return false; // DEVELOPMENT / BACKTEST_ONLY / SHADOW / RESEARCH_ONLY / SUSPENDED / RETIRED
+}
 
 export const decisionPolicySchema = z.object({
   id: z.string(),
@@ -78,6 +108,8 @@ export const decisionPolicySchema = z.object({
 
   minimumForwardSampleByMarket: z.number().optional(),
   minimumCalibrationGrade: z.string().optional(),
+  /** When true, PROVISIONAL markets may produce firm BET (stricter thresholds). */
+  allowProvisionalMarkets: z.boolean().optional(),
 
   source: z.enum(["application-config", "admin-config"]),
   createdAt: z.string(),
@@ -85,7 +117,7 @@ export const decisionPolicySchema = z.object({
 export type DecisionPolicy = z.infer<typeof decisionPolicySchema>;
 
 export const decisionResultSchema = z.object({
-  decision: finalDecisionSchema,
+  decision: anyDecisionSchema,
   subjectType: z.enum(["LEG", "ENTRY"]),
   playerId: z.number().optional(),
   gamePk: z.number().optional(),
@@ -109,6 +141,7 @@ export const decisionResultSchema = z.object({
 
   payoutTableId: z.string().nullable().optional(),
   payoutTableVersion: z.string().nullable().optional(),
+  payoutVerified: z.boolean().optional(),
   decisionPolicyId: z.string(),
   decisionPolicyVersion: z.string(),
   modelVersion: z.string(),
@@ -119,11 +152,23 @@ export const decisionResultSchema = z.object({
   generatedAt: z.string(),
   featureCutoff: z.string(),
   dataAsOf: z.string(),
+  /** Scheduled event start — point-in-time boundary for leakage checks. */
+  eventStartTime: z.string().optional(),
   lineCapturedAt: z.string().optional(),
+  /** Hash of the exact decision inputs, for reproducibility/audit. */
+  inputHash: z.string().optional(),
 
   reasons: z.array(decisionReasonSchema),
   vetoes: z.array(decisionVetoSchema),
   releaseConditions: z.array(z.string()).optional(),
   nextReviewAt: z.string().nullable().optional(),
+}).superRefine((r, ctx) => {
+  // A leg is never APPROVE_ENTRY; an entry is never a directional BET_MORE/BET_LESS.
+  if (r.subjectType === "LEG" && r.decision === "APPROVE_ENTRY") {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "LEG cannot be APPROVE_ENTRY" });
+  }
+  if (r.subjectType === "ENTRY" && (r.decision === "BET_MORE" || r.decision === "BET_LESS")) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "ENTRY cannot be BET_MORE/BET_LESS; use APPROVE_ENTRY" });
+  }
 });
 export type DecisionResult = z.infer<typeof decisionResultSchema>;

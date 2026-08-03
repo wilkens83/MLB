@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Gavel, RefreshCw, Loader2, ShieldAlert, Clock, Ban, CircleCheck, HelpCircle } from "lucide-react";
 import { cn, pct } from "@/lib/utils";
-import type { DecisionResult, FinalDecision } from "@/lib/prizepicks/decision/types";
+import type { DecisionResult, AnyDecision } from "@/lib/prizepicks/decision/types";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -28,15 +28,16 @@ function readBoard(date: string): BoardLeg[] {
   }
 }
 
-const STYLE: Record<FinalDecision, { bg: string; label: string }> = {
+const STYLE: Record<AnyDecision, { bg: string; label: string }> = {
+  APPROVE_ENTRY: { bg: "bg-[var(--positive)] text-white", label: "APPROVE ENTRY" },
   BET_MORE: { bg: "bg-[var(--positive)] text-white", label: "BET MORE" },
   BET_LESS: { bg: "bg-[var(--positive)] text-white", label: "BET LESS" },
   WAIT: { bg: "bg-[var(--warning)] text-black", label: "WAIT" },
   NO_BET: { bg: "bg-[var(--negative)] text-white", label: "NO BET" },
   UNAVAILABLE: { bg: "bg-surface-2 text-muted", label: "UNAVAILABLE" },
 };
-function Icon({ d }: { d: FinalDecision }) {
-  if (d === "BET_MORE" || d === "BET_LESS") return <CircleCheck className="h-6 w-6" />;
+function Icon({ d }: { d: AnyDecision }) {
+  if (d === "BET_MORE" || d === "BET_LESS" || d === "APPROVE_ENTRY") return <CircleCheck className="h-6 w-6" />;
   if (d === "WAIT") return <Clock className="h-6 w-6" />;
   if (d === "NO_BET") return <Ban className="h-6 w-6" />;
   return <HelpCircle className="h-6 w-6" />;
