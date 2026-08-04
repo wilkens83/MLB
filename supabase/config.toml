@@ -1,0 +1,7 @@
+# Supabase local config for the Diamond Edge "mlb-edge" project.
+# The connected project ref is read from SUPABASE env vars at runtime — no
+# secrets live in this file. See .env.example.
+project_id = "jjrnimrljknyrvkyszih"
+
+[db]
+major_version = 17
