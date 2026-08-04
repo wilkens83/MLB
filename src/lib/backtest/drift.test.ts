@@ -1,5 +1,5 @@
 import { test, expect, describe } from "bun:test";
-import { populationStabilityIndex, classifyDrift, assessDrift } from "./drift";
+import { populationStabilityIndex, categoricalPsi, classifyDrift, assessDrift, assessFeatureDrift, MIN_DRIFT_SAMPLE } from "./drift";
 
 /** A deterministic pseudo-sample generator (no RNG dependency in tests). */
 function ramp(n: number, base: number, spread: number): number[] {
@@ -48,6 +48,49 @@ describe("assessDrift", () => {
     const shifted = ramp(300, 20, 5); // entirely disjoint support
     const r = assessDrift(expected, shifted);
     expect(r.level).toBe("significant");
+    expect(r.breach).toBe(true);
+  });
+});
+
+describe("insufficient data is NOT stable (PSI correction)", () => {
+  test("empty samples resolve to insufficient_data and breach", () => {
+    const r = assessDrift([], []);
+    expect(r.level).toBe("insufficient_data");
+    expect(r.insufficientData).toBe(true);
+    expect(r.breach).toBe(true); // required feature with no evidence must block
+  });
+
+  test("a below-threshold current sample is insufficient, not stable", () => {
+    const expected = ramp(100, 0, 10);
+    const current = ramp(MIN_DRIFT_SAMPLE - 1, 0, 10); // just under the floor
+    const r = assessDrift(expected, current);
+    expect(r.level).toBe("insufficient_data");
+    expect(r.breach).toBe(true);
+  });
+
+  test("a healthy sample count is assessed normally", () => {
+    const s = ramp(MIN_DRIFT_SAMPLE + 5, 0, 10);
+    expect(assessDrift(s, s).insufficientData).toBe(false);
+  });
+});
+
+describe("categorical / binary drift uses category shares, not deciles", () => {
+  test("identical categorical distributions are stable", () => {
+    const a = Array.from({ length: 60 }, (_, i) => (i % 3 === 0 ? "L" : i % 3 === 1 ? "R" : "S"));
+    expect(categoricalPsi(a, a)).toBeLessThan(0.01);
+  });
+
+  test("a shifted binary handedness split is flagged", () => {
+    const ref = Array.from({ length: 100 }, (_, i) => (i < 50 ? "L" : "R")); // 50/50
+    const cur = Array.from({ length: 100 }, (_, i) => (i < 90 ? "L" : "R")); // 90/10
+    const r = assessFeatureDrift(ref, cur, { featureType: "binary" });
+    expect(r.psi).toBeGreaterThan(0.1);
+    expect(r.insufficientData).toBe(false);
+  });
+
+  test("feature-type drift also blocks on insufficient data", () => {
+    const r = assessFeatureDrift(["L"], ["R"], { featureType: "categorical" });
+    expect(r.level).toBe("insufficient_data");
     expect(r.breach).toBe(true);
   });
 });

@@ -8,6 +8,7 @@
 import { randomUUID } from "node:crypto";
 import type { DecisionResult } from "./types";
 import { configChecksum } from "./version";
+import { SupabaseDecisionStore } from "./supabase-store";
 
 export interface DecisionRecord {
   id: string;
@@ -70,9 +71,38 @@ class InMemoryDecisionStore implements DecisionStore {
 }
 
 const globalForStore = globalThis as unknown as { __diamondDecisionStore?: DecisionStore };
+
+/**
+ * Canonical decision store. Uses the append-only Supabase table when a
+ * service-role key is configured (production); falls back to the in-memory
+ * store for tests / keyless local dev. Selection is lazy + memoized so importing
+ * this module never requires a database.
+ */
 export function getDecisionStore(): DecisionStore {
-  if (!globalForStore.__diamondDecisionStore) globalForStore.__diamondDecisionStore = new InMemoryDecisionStore();
+  if (!globalForStore.__diamondDecisionStore) {
+    globalForStore.__diamondDecisionStore = createDecisionStore();
+  }
   return globalForStore.__diamondDecisionStore;
+}
+
+function createDecisionStore(): DecisionStore {
+  // Server + service role configured → durable append-only Supabase store;
+  // otherwise the in-memory baseline (tests / keyless local dev). This module is
+  // server-only (the client imports only decision types via the index), so the
+  // static import never reaches a browser bundle.
+  if (typeof window === "undefined" && (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").length > 0) {
+    try {
+      return new SupabaseDecisionStore();
+    } catch {
+      /* fall through to in-memory */
+    }
+  }
+  return new InMemoryDecisionStore();
+}
+
+/** Test-only: reset the memoized store (so env changes take effect). */
+export function __resetDecisionStore(): void {
+  globalForStore.__diamondDecisionStore = undefined;
 }
 
 /** Verify a record's stored result has not been mutated since it was written. */

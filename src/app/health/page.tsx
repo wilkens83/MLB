@@ -6,11 +6,20 @@ import { Card } from "@/components/ui/card";
 import { StatPill } from "@/components/ui/primitives";
 import type { ProviderHealth } from "@/lib/providers/types";
 
+interface DatabaseHealth {
+  configured: boolean;
+  serviceRole: boolean;
+  connected: boolean;
+  error?: string;
+  tables?: Record<string, number>;
+}
+
 interface HealthPayload {
   generatedAt: number;
   cache: { total: number; live: number; stale: number };
   validationFailures: number;
   providers: ProviderHealth[];
+  database?: DatabaseHealth;
 }
 
 export default function HealthPage() {
@@ -42,6 +51,34 @@ export default function HealthPage() {
           hint="malformed upstream payloads"
         />
       </div>
+
+      <Card className="p-5">
+        <h2 className="mb-4 flex items-center gap-2 font-semibold">
+          <Database className="h-4 w-4 text-brand-500" /> Scientific persistence (Supabase)
+        </h2>
+        {!data?.database?.configured && (
+          <p className="text-sm text-muted">
+            Database not configured — using in-memory persistence (set the Supabase env vars to enable durable scientific records).
+          </p>
+        )}
+        {data?.database?.configured && (
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+            <span className="flex items-center gap-2 font-medium">
+              <ShieldCheck className={data.database.connected ? "h-4 w-4 text-[var(--positive)]" : "h-4 w-4 text-[var(--warning)]"} />
+              {data.database.connected ? "Connected" : "Not connected"}
+            </span>
+            <span className="text-muted">service role: {data.database.serviceRole ? "yes" : "no (reads only)"}</span>
+            {data.database.error && <span className="text-[var(--negative)]">{data.database.error}</span>}
+            {data.database.tables && (
+              <span className="ml-auto flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-2">
+                {Object.entries(data.database.tables).map(([t, n]) => (
+                  <span key={t}>{t}: {n}</span>
+                ))}
+              </span>
+            )}
+          </div>
+        )}
+      </Card>
 
       <Card className="p-5">
         <h2 className="mb-4 flex items-center gap-2 font-semibold">
