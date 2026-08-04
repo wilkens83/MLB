@@ -14,19 +14,19 @@ export interface EntryDecisionOutput {
   entryDecision: DecisionResult;
   legDecisions: DecisionResult[];
   policyVersion: string;
-  marketMode: "research-only" | "assume-validated";
+  marketMode: "research-only" | "server-derived";
   warnings: string[];
 }
 
 export const getEntryDecisionTool = defineTool<
-  { entryType?: "power" | "flex"; assumeValidatedMarkets?: boolean },
+  { entryType?: "power" | "flex" },
   EntryDecisionOutput
 >({
   name: "getEntryDecision",
   description:
-    "Produce the FIRM decision (BET_MORE/BET_LESS/WAIT/NO_BET/UNAVAILABLE) for the complete imported PrizePicks entry using the canonical decision engine — with vetoes, precedence, entry economics and sensitivity. Use for 'should I bet this entry', 'firm decision', 'is this a bet'. Markets default to RESEARCH_ONLY (BET prohibited) unless assumeValidatedMarkets is set.",
+    "Produce the FIRM decision (BET_MORE/BET_LESS/WAIT/NO_BET/UNAVAILABLE) for the complete imported PrizePicks entry using the canonical decision engine — with vetoes, precedence, entry economics and sensitivity. Use for 'should I bet this entry', 'firm decision', 'is this a bet'. Market validation state is SERVER-DERIVED from the model registry (defaults to RESEARCH_ONLY, BET prohibited); it cannot be overridden from chat.",
   domain: "prizepicks",
-  inputSchema: z.object({ entryType: z.enum(["power", "flex"]).optional(), assumeValidatedMarkets: z.boolean().optional() }),
+  inputSchema: z.object({ entryType: z.enum(["power", "flex"]).optional() }),
   async execute(input, ctx): Promise<ToolResult<EntryDecisionOutput>> {
     const board = ctx.prizePicksBoard ?? [];
     const result = await decideEntryFromBoard({
@@ -34,7 +34,6 @@ export const getEntryDecisionTool = defineTool<
       entryType: input.entryType ?? "flex",
       season: ctx.season,
       date: ctx.date,
-      assumeValidatedMarkets: input.assumeValidatedMarkets,
     });
     return {
       data: {

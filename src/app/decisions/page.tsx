@@ -46,7 +46,6 @@ function Icon({ d }: { d: AnyDecision }) {
 export default function DecisionsPage() {
   const [date, setDate] = useState(todayIso());
   const [entryType, setEntryType] = useState<"power" | "flex">("flex");
-  const [assumeValidated, setAssumeValidated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [entry, setEntry] = useState<DecisionResult | null>(null);
   const [legs, setLegs] = useState<DecisionResult[]>([]);
@@ -71,7 +70,7 @@ export default function DecisionsPage() {
       const res = await fetch("/api/prizepicks/decision", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ board, entryType, date, assumeValidatedMarkets: assumeValidated }),
+        body: JSON.stringify({ board, entryType, date }),
       });
       const data = await res.json();
       setEntry(data.entryDecision ?? null);
@@ -82,7 +81,7 @@ export default function DecisionsPage() {
     } finally {
       setBusy(false);
     }
-  }, [date, entryType, assumeValidated]);
+  }, [date, entryType]);
 
   return (
     <div className="space-y-4">
@@ -97,10 +96,7 @@ export default function DecisionsPage() {
           <option value="flex">Flex</option>
           <option value="power">Power</option>
         </select>
-        <label className="flex items-center gap-1.5 text-[11px] text-muted">
-          <input type="checkbox" checked={assumeValidated} onChange={(e) => setAssumeValidated(e.target.checked)} />
-          Assume validated markets (research override)
-        </label>
+        <span className="text-[11px] text-muted">Market state is server-derived from the model registry</span>
         <button onClick={() => void run()} disabled={busy} className="ml-auto inline-flex items-center gap-1 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-40">
           {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Decide entry ({boardSize} legs)
         </button>

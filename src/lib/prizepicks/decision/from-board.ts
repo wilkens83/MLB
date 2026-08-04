@@ -18,6 +18,7 @@ import type { GameLogEntry } from "@/lib/domain/models";
 import { evaluateEntry } from "./evaluate-entry";
 import { runSensitivity } from "./sensitivity";
 import { getDecisionStore } from "./store";
+import { deriveMarketFacts, deriveEntryPayoutVerified } from "@/lib/supabase/derive-facts";
 import type { EntryFacts, LegFacts } from "./evaluate-entry";
 import type { DecisionResult } from "./types";
 
@@ -34,13 +35,14 @@ export interface DecideEntryInput {
   entryType: "power" | "flex";
   season: number;
   date: string;
-  assumeValidatedMarkets?: boolean;
 }
 
 export interface DecideEntryResult {
   entryDecision: DecisionResult;
   legDecisions: DecisionResult[];
-  marketMode: "research-only" | "assume-validated";
+  /** research-only when no market is server-validated; server-derived otherwise.
+      There is NO client control — the state comes from the model registry. */
+  marketMode: "research-only" | "server-derived";
   warnings: string[];
 }
 
@@ -57,14 +59,13 @@ function toLog(raw: unknown[]): GameLogEntry[] {
 
 export async function decideEntryFromBoard(input: DecideEntryInput): Promise<DecideEntryResult> {
   const board = input.board.slice(0, 6);
-  const marketMode = input.assumeValidatedMarkets ? "assume-validated" : "research-only";
   const warnings: string[] = ["Analysis uses the imported (not live) board; direction defaults to the model-favored side."];
-  if (marketMode === "research-only") {
-    warnings.push("Markets are RESEARCH_ONLY (no forward-validated sample) — firm BET decisions are prohibited by policy.");
-  }
   if (board.length < 2) {
-    return { entryDecision: unavailableEntry("Entry needs at least 2 imported legs."), legDecisions: [], marketMode, warnings };
+    return { entryDecision: unavailableEntry("Entry needs at least 2 imported legs."), legDecisions: [], marketMode: "research-only", warnings };
   }
+  // Trusted per-entry payout verification — a generic default never backs a BET.
+  const payoutVerified = await deriveEntryPayoutVerified(input.entryType, board.length);
+  let anyServerValidated = false;
 
   const legFacts: LegFacts[] = [];
   const legModels: EntryLegInput[] = [];
@@ -113,6 +114,13 @@ export async function decideEntryFromBoard(input: DecideEntryInput): Promise<Dec
       volatility = Math.min(100, Math.round(((a.simulation.stdDev ?? 0) / Math.abs(a.projection.lambda || 1)) * 100));
     }
 
+    // Scientific facts are SERVER-DERIVED from the persisted registry + monitoring
+    // — the client cannot influence market validation, calibration or drift state.
+    const facts = await deriveMarketFacts(market);
+    if (facts.marketValidationState === "VALIDATED" || facts.marketValidationState === "PRODUCTION" || facts.marketValidationState === "PROVISIONAL") {
+      anyServerValidated = true;
+    }
+
     legFacts.push({
       playerId: e.mlbPlayerId, gamePk: payload?.opponent?.gamePk, market, line: e.line, isPitcher,
       playerResolved: true, gameResolved: !!payload?.opponent?.gamePk || isPitcher, marketSupported: true,
@@ -124,7 +132,10 @@ export async function decideEntryFromBoard(input: DecideEntryInput): Promise<Dec
       pitcherMateriallyRelevant: !isPitcher, starterConfirmed: payload?.opponent?.starterConfirmed ?? false,
       gameStarted: false, snapshotBeforeEvent: true, featureCutoffBeforeStart: true,
       pregameSnapshotExists: true, modelVersionApproved: true,
-      marketValidationState: input.assumeValidatedMarkets ? "VALIDATED" : "RESEARCH_ONLY",
+      marketValidationState: facts.marketValidationState,
+      calibrationDegraded: facts.calibrationDegraded,
+      featureDriftExceeded: facts.featureDriftExceeded,
+      outsideTrainingSupport: facts.outsideTrainingSupport,
     });
     legModels.push({
       id: `leg-${i}`, label: `${player.name} ${market} ${e.line}`, playerId: e.mlbPlayerId,
@@ -149,14 +160,19 @@ export async function decideEntryFromBoard(input: DecideEntryInput): Promise<Dec
       downsideProbability: econ?.downsideProbability,
     },
     correlationConcentration: (econ?.contradictions.length ?? 0) > 0,
-    // Board economics use a GENERIC default payout table (not the verified entry
-    // payout), so a firm BET is blocked — research estimate only.
-    payoutVerified: false,
+    // payoutVerified is SERVER-DERIVED: true only when a verified payout snapshot
+    // exists for this format/pick-count. A generic default keeps it false.
+    payoutVerified,
     modelVersion: MODEL_VERSION, featureCutoff: nowIso, dataAsOf: nowIso,
   };
 
   const { entryDecision, legDecisions } = evaluateEntry(entryFacts);
   await getDecisionStore().record(`entry:${input.date}:${board.map((b) => b.mlbPlayerId).join("-")}`, entryDecision).catch(() => null);
+
+  const marketMode: DecideEntryResult["marketMode"] = anyServerValidated ? "server-derived" : "research-only";
+  if (!anyServerValidated) {
+    warnings.push("No market is server-validated (model registry defaults to RESEARCH_ONLY) — firm BET decisions are prohibited by policy.");
+  }
 
   return {
     entryDecision,

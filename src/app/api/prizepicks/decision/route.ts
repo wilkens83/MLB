@@ -9,7 +9,6 @@ export const dynamic = "force-dynamic";
 const bodySchema = z.object({
   entryType: z.enum(["power", "flex"]).default("flex"),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  assumeValidatedMarkets: z.boolean().optional(),
   board: z
     .array(
       z.object({
@@ -36,7 +35,6 @@ export async function POST(req: NextRequest) {
       entryType: parsed.data.entryType,
       season: getCurrentMlbSeason(new Date(`${date}T12:00:00Z`)),
       date,
-      assumeValidatedMarkets: parsed.data.assumeValidatedMarkets,
     });
     return NextResponse.json(result);
   } catch {

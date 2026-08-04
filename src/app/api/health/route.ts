@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getAllHealth } from "@/lib/providers/health";
 import { mlbCacheStats } from "@/lib/mlb/client";
 import { getValidationFailureCount } from "@/lib/schemas/validate";
+import { getDatabaseHealth } from "@/lib/supabase/health";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,5 +13,6 @@ export async function GET() {
     cache: mlbCacheStats(),
     validationFailures: getValidationFailureCount(),
     providers: getAllHealth(),
+    database: await getDatabaseHealth(),
   });
 }
