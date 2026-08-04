@@ -227,6 +227,24 @@ namespace and reuses the pure core.
   Design docs: `docs/DECISION_ENGINE_REQUIREMENTS.md`,
   `docs/SCIENTIFIC_QUALITY_PROGRESS.md`.
 
+- **Scientific persistence (`supabase/migrations/`, `src/lib/supabase/`).** The
+  connected `mlb-edge` Supabase project (Postgres 17) holds the append-only,
+  point-in-time scientific record: twelve tables (`raw_observations`,
+  `prizepicks_line_snapshots`, `payout_snapshots`, `feature_snapshots`,
+  `projection_snapshots`, `decision_snapshots`, `official_results`,
+  `grading_history`, `model_registry`, `market_validation_metrics`,
+  `drift_reports`, `circuit_breaker_events`) added as **additive** migrations that
+  never touch the legacy user tables. Immutable tables are enforced append-only by
+  DB triggers (corrections append a superseding row); RLS makes system tables
+  service-role-write / authenticated-read, so a browser can never write scientific
+  records or supply `marketValidationState`/`payoutVerified`/drift flags — those
+  are **server-derived** (`derive-facts.ts`) from the registry + metrics + drift +
+  verified payouts. `SupabaseDecisionStore` sits behind the existing `DecisionStore`
+  interface; `getDecisionStore()` uses it when `SUPABASE_SERVICE_ROLE_KEY` is set,
+  else the in-memory baseline (tests / keyless dev). Client factories: `env.ts`,
+  server service-role/anon (`server.ts`), browser anon (`browser.ts`); generated
+  `database.types.ts`. Design/mapping: `docs/SCIENTIFIC_QUALITY_PROGRESS.md`.
+
 Other route-level pieces: `src/lib/mlb/slate.ts` + `/slate` (multi-game daily
 board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
 (team/game markets — NRFI, totals, run line). Design/consolidation docs live in
