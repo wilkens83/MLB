@@ -29,7 +29,6 @@ function redact(fields?: Record<string, unknown>): Record<string, unknown> | und
 function emit(level: LogLevel, msg: string, fields?: Record<string, unknown>) {
   if (ORDER[level] < threshold()) return;
   const line = JSON.stringify({ level, msg, ts: new Date().toISOString(), ...redact(fields) });
-  // eslint-disable-next-line no-console
   (level === "error" ? console.error : level === "warn" ? console.warn : console.log)(line);
 }
 

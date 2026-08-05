@@ -47,13 +47,15 @@ export interface GraphNode<I = unknown, O = unknown> {
   retry: RetryPolicy;
   failurePolicy: FailurePolicy;
   costCategory: CostCategory;
-  /** Build this node's typed input from the completed upstream outputs. */
-  selectInput: (inputs: Readonly<Record<string, unknown>>) => I;
-  run: (input: I, ctx: NodeContext) => Promise<Result<O>>;
+  /** Build this node's typed input from the completed upstream outputs.
+      Declared with method syntax so a specific node is assignable to
+      GraphNode<unknown, unknown> in a heterogeneous workflow array. */
+  selectInput(inputs: Readonly<Record<string, unknown>>): I;
+  run(input: I, ctx: NodeContext): Promise<Result<O>>;
   /** Substitute value for fallback/degrade policies. */
-  fallback?: (ctx: NodeContext) => Result<O>;
+  fallback?(ctx: NodeContext): Result<O>;
   /** Optional guard — when it returns false the node is skipped (conditional routing). */
-  guard?: (inputs: Readonly<Record<string, unknown>>) => boolean;
+  guard?(inputs: Readonly<Record<string, unknown>>): boolean;
   metadata?: Record<string, unknown>;
 }
 
