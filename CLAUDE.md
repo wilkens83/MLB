@@ -23,6 +23,9 @@ pnpm lint           # eslint (next lint / flat config)
 # Unit tests — colocated *.test.ts (math, odds, hitRate, engine, prizepicks,
 # sports, tennis, savantClient). Run under Bun's test runner:
 pnpm test                                       # bun test src (whole suite)
+pnpm test:all | test:unit | test:contracts | test:workflows | test:statistical
+pnpm typecheck                                   # tsc --noEmit
+pnpm verify                                      # lint + typecheck + tests + build
 bun test src/lib/math/stats.test.ts             # one file
 bun test src -t "no-vig"                         # filter by test name
 
@@ -244,6 +247,22 @@ namespace and reuses the pure core.
   else the in-memory baseline (tests / keyless dev). Client factories: `env.ts`,
   server service-role/anon (`server.ts`), browser anon (`browser.ts`); generated
   `database.types.ts`. Design/mapping: `docs/SCIENTIFIC_QUALITY_PROGRESS.md`.
+
+- **Graph workflow engine (`src/workflows/`, `src/schemas/`, `src/observability/`).**
+  Orchestration is moving onto a small internal, typed graph engine (no heavy
+  dependency — see `docs/architecture/ADR/0001`). `src/workflows/graph` provides
+  typed nodes (input/output Zod schemas, dependsOn, timeout, retry, failure policy,
+  cost category) and an executor with topological ordering, bounded fan-out/fan-in,
+  conditional routing (node guards), retry-with-backoff, per-node timeout,
+  execution budgets, cancellation, and a full `WorkflowTrace`; nodes return typed
+  `Result` (errors are values, never thrown across boundaries). `src/schemas` holds
+  the runtime contracts (domain/analysis/verification/workflow); `src/observability`
+  a secret-redacting structured logger. `src/workflows/verification` are
+  independent deterministic verifiers. The first migrated workflow is player-prop
+  (`src/workflows/player-prop`), which reuses the pure core unchanged and is exposed
+  opt-in at `GET /api/players/[id]/analysis?engine=graph` behind the shared response
+  envelope (`src/lib/http/envelope.ts`) — the default payload is unchanged. Design:
+  `docs/architecture/`, `docs/WORKFLOWS.md`; audit: `docs/audit/`.
 
 Other route-level pieces: `src/lib/mlb/slate.ts` + `/slate` (multi-game daily
 board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
