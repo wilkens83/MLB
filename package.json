@@ -7,7 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "bun test src"
+    "typecheck": "tsc --noEmit",
+    "test": "bun test src",
+    "test:all": "bun test src",
+    "test:unit": "bun test src/lib",
+    "test:contracts": "bun test src/schemas",
+    "test:workflows": "bun test src/workflows",
+    "test:statistical": "bun test src/lib/backtest src/lib/math src/lib/prediction",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test:all && pnpm build"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.0",

@@ -95,6 +95,35 @@ pnpm build        # production build (typechecks)
 
 See [`CLAUDE.md`](./CLAUDE.md) for the full architecture map.
 
+## Architecture
+
+The pure analytics core is wrapped by a small internal **graph workflow engine**
+(`src/workflows/graph`) with runtime **contracts** (`src/schemas`), **independent
+verification** (`src/workflows/verification`), and **observability**
+(`src/observability`). Dependency direction is UI → route handlers → workflows →
+domain/core; the core, the engine, and the contracts import nothing from Next.js,
+React, UI, or concrete external clients. The first migrated workflow is
+**player-prop**, exposed opt-in at `GET /api/players/[id]/analysis?engine=graph`
+behind a shared response envelope; default behavior is unchanged.
+
+- Audit: [`docs/audit/`](./docs/audit) · Target architecture:
+  [`docs/architecture/`](./docs/architecture) · Workflows:
+  [`docs/WORKFLOWS.md`](./docs/WORKFLOWS.md) · Testing:
+  [`docs/TESTING.md`](./docs/TESTING.md).
+
+## Commands
+
+```bash
+pnpm dev            # dev server
+pnpm build          # production build (tsc typecheck included)
+pnpm lint           # eslint
+pnpm typecheck      # tsc --noEmit
+pnpm test:all       # full Bun suite (offline, deterministic)
+pnpm test:contracts # Zod contract tests
+pnpm test:workflows # graph engine + workflow tests
+pnpm verify         # lint + typecheck + tests + build
+```
+
 ## Disclaimer
 
 Diamond Edge is a research and modeling tool for entertainment. It is **not
