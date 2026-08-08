@@ -49,6 +49,21 @@ export const canonicalOpportunityAssessmentSchema = z.object({
   fragility: z.number(),
   volatility: z.number(),
 
+  // sensitivity / fragility detail (additive)
+  fragilityLevel: z.enum(["LOW", "MODERATE", "HIGH", "EXTREME"]).optional(),
+  scenarioProbabilities: z.array(z.object({
+    label: z.string(), assumption: z.string(), probability: z.number(),
+  })).optional(),
+  probabilityRange: z.number().optional(),
+  medianScenarioProbability: z.number().optional(),
+  directionFlipCount: z.number().int().nonnegative().optional(),
+  directionUnstable: z.boolean().optional(),
+
+  // SEPARATED prediction-uncertainty sources (never one merged "confidence")
+  monteCarloStdError: z.number().optional(),
+  modelInputUncertainty: z.number().optional(),
+  dataMissingness: z.number().optional(),
+
   // status inputs
   lineupStatus: z.enum(["confirmed", "projected", "not_required"]),
   starterStatus: z.enum(["confirmed", "projected", "not_relevant"]),

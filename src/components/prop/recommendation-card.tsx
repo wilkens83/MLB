@@ -36,8 +36,8 @@ export function RecommendationCard({
     <div className="glass rounded-2xl p-5">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium uppercase tracking-wide text-muted">Model Signal</span>
-        <Badge variant={rec.confidence >= 65 ? "brand" : "outline"}>
-          <Zap className="h-3 w-3" /> {rec.confidence}% confidence
+        <Badge variant={rec.confidence >= 65 ? "brand" : "outline"} title="A 0–100 model-signal strength score — NOT the probability or certainty of the outcome.">
+          <Zap className="h-3 w-3" /> Model confidence {rec.confidence}/100
         </Badge>
       </div>
 
