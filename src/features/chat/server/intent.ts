@@ -20,9 +20,18 @@ export type IntentKind =
   | "entry-decision"
   | "data-health"
   | "followup-filter"
+  // Opportunity/decision querying over canonical OpportunityAssessments:
+  | "best-opportunities"
+  | "watch-candidates"
+  | "rejected-opportunities"
+  | "scientific-breakers"
+  | "model-performance"
+  | "calibration-status"
   | "unsupported"
   | "clarify"
   | "help";
+
+export type OpportunitySortHint = "advantage" | "calibrated" | "fragility";
 
 export interface IntentFilters {
   minOverProbability?: number;
@@ -40,6 +49,8 @@ export interface Intent {
   window?: number;
   /** Power vs Flex, for entry analysis. */
   entryType?: "power" | "flex";
+  /** Ranking axis for opportunity queries. */
+  sort?: OpportunitySortHint;
   /** Set for unsupported/clarify to explain to the user. */
   note?: string;
 }
@@ -137,6 +148,36 @@ export function classifyIntent(
       (Object.keys(filters).length > 0 && names.length === 0 && !/\b(compare|games|prizepicks|health|missing)\b/.test(text)));
   if (isFollowup && (filters.minOverProbability !== undefined || filters.handedness || filters.belowLine || filters.limit)) {
     return { kind: "followup-filter", filters, playerNames: [], window };
+  }
+
+  // --- Opportunity / decision querying over canonical OpportunityAssessments ---
+  const sortHint: OpportunitySortHint | undefined =
+    /calibrat/.test(text) && !/calibration status/.test(text) ? "calibrated"
+      : /advantage|edge over baseline/.test(text) ? "advantage"
+        : /fragilit|most robust|most stable/.test(text) ? "fragility" : undefined;
+
+  if (/circuit breaker|\bbreakers?\b|scientific breaker/.test(text)) {
+    return { kind: "scientific-breakers", filters, playerNames: [], window };
+  }
+  if (/model performance|performance by market|track record|how (?:is|are) the models?/.test(text)) {
+    return { kind: "model-performance", filters, playerNames: [], prop, window };
+  }
+  if (/calibration status|how calibrated|are (?:the )?(?:models?|probabilit\w+) calibrated/.test(text)) {
+    return { kind: "calibration-status", filters, playerNames: [], window };
+  }
+  if (/rejected|why (?:not|didn'?t)\b.*(qualif|pick|play)|no[- ]?play\b|didn'?t qualify|not qualified/.test(text)) {
+    return { kind: "rejected-opportunities", filters, playerNames: [], prop, window };
+  }
+  if (/watch candidate|watch list|on watch|currently watching/.test(text)) {
+    return { kind: "watch-candidates", filters, playerNames: [], prop, window };
+  }
+  const isBestOpportunity =
+    /\bbest pick\b|best opportunit|qualified opportunit|best (?:qualified )?(?:pick|play|line)|highest (?:calibrated|model advantage|advantage)|lowest fragilit/.test(text)
+    || /strongest (?:prize ?picks )?(?:lines?|picks?|plays?)|which (?:prize ?picks )?lines? are strongest/.test(text)
+    || (/prize ?picks/.test(text) && /strongest|best lines?/.test(text))
+    || /best (?:pitcher )?strikeout (?:pick|opportunit)|best (?:hitter )?hit (?:pick|opportunit)/.test(text);
+  if (isBestOpportunity) {
+    return { kind: "best-opportunities", filters, playerNames: [], prop, window, sort: sortHint };
   }
 
   // "Why" explanation of the prior pick / a named player's lean.

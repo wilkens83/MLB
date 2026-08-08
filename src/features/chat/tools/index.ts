@@ -14,6 +14,8 @@ import { getPrizePicksBoardTool } from "./prizepicks/get-board";
 import { getPrizePicksEdgesTool } from "./prizepicks/rank-edges";
 import { analyzeEntryTool } from "./prizepicks/analyze-entry";
 import { getEntryDecisionTool } from "./prizepicks/entry-decision";
+import { getOpportunitiesTool } from "./prizepicks/get-opportunities";
+import { getScientificMetricsTool } from "./prizepicks/get-scientific-metrics";
 import type { ChatToolDefinition } from "./types";
 
 /** All tools, in a stable order. */
@@ -29,6 +31,8 @@ export const ALL_TOOLS: ChatToolDefinition[] = [
   getPrizePicksEdgesTool as ChatToolDefinition,
   analyzeEntryTool as ChatToolDefinition,
   getEntryDecisionTool as ChatToolDefinition,
+  getOpportunitiesTool as ChatToolDefinition,
+  getScientificMetricsTool as ChatToolDefinition,
 ];
 
 /** Build a fresh registry with every tool registered. */

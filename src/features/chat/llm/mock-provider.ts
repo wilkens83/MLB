@@ -115,6 +115,18 @@ async function route(intent: Intent, input: ProviderInput): Promise<Composed> {
       return composeDecision(input, intent);
     case "data-health":
       return composeHealth(input);
+    case "best-opportunities":
+      return composeOpportunities(input, intent, "QUALIFIED");
+    case "watch-candidates":
+      return composeOpportunities(input, intent, "WATCH");
+    case "rejected-opportunities":
+      return composeOpportunities(input, intent, "REJECTED");
+    case "scientific-breakers":
+      return composeScientific(input, "breakers");
+    case "model-performance":
+      return composeScientific(input, "performance");
+    case "calibration-status":
+      return composeScientific(input, "calibration");
     case "followup-filter":
       return composeFollowup(input, intent);
     case "unsupported":
@@ -273,6 +285,109 @@ async function composeHealth(input: ProviderInput): Promise<Composed> {
   const res = await input.invoke<DataHealthOutput>("getDataHealth", {});
   const b = build.buildHealthBlocks(res.data);
   return { ...b, sources: res.sources, warnings: res.warnings, state: { kind: "data-health", date: input.context.date } };
+}
+
+async function composeOpportunities(
+  input: ProviderInput,
+  intent: Intent,
+  status: "QUALIFIED" | "WATCH" | "REJECTED",
+): Promise<Composed> {
+  const res = await input.invoke<import("../tools/prizepicks/get-opportunities").GetOpportunitiesOutput>(
+    "getOpportunities",
+    { status, market: intent.prop, sortBy: intent.sort, limit: intent.filters.limit ?? 10 },
+  );
+  const { rows, available } = res.data;
+
+  if (!available) {
+    return {
+      answer: "Opportunity data is temporarily unavailable — I won't guess a pick.",
+      blocks: [{ type: "markdown", content: res.warnings.join(" ") || "Opportunity data unavailable." }],
+      sources: res.sources, warnings: res.warnings, suggested: opportunitySuggestions(),
+    };
+  }
+  if (rows.length === 0) {
+    const msg = status === "QUALIFIED"
+      ? "No opportunity currently meets the policy."
+      : `No ${status.toLowerCase()} candidates right now.`;
+    return {
+      answer: msg,
+      blocks: [{ type: "markdown", content: `${msg} I only surface canonical Opportunity Assessments — I never invent one.` }],
+      sources: res.sources, warnings: res.warnings, suggested: opportunitySuggestions(),
+    };
+  }
+
+  const table = {
+    type: "table" as const,
+    title: `${status} opportunities`,
+    columns: [
+      { key: "player", label: "Player" }, { key: "market", label: "Market / line" },
+      { key: "decision", label: "Decision" }, { key: "calibrated", label: "Calibrated P", format: "percent" },
+      { key: "raw", label: "Raw P", format: "percent" }, { key: "baseline", label: "Baseline", format: "percent" },
+      { key: "advantage", label: "Advantage", format: "signed" }, { key: "fragility", label: "Fragility" },
+      { key: "dq", label: "Data quality" }, { key: "reasons", label: "Primary reasons" },
+    ],
+    rows: rows.map((r) => ({
+      player: r.playerId ? `#${r.playerId}` : "—",
+      market: `${r.market} ${r.line} (${r.side})`,
+      decision: r.status,
+      calibrated: r.calibratedProbability, // null when calibration unavailable — never the raw value
+      raw: r.rawProbability,
+      baseline: r.baselineProbability,
+      advantage: r.modelAdvantage,
+      fragility: `${r.fragility}${r.fragilityLevel ? ` (${r.fragilityLevel})` : ""}`,
+      dq: r.dataQuality,
+      reasons: r.primaryReasons.join(", "),
+    })),
+  };
+  const top = rows[0];
+  const prov = `Data ${top.dataTimestamp} · model ${top.modelVersion} · calibration ${top.calibrationVersion} · features ${top.featureVersion}`;
+  return {
+    answer: `${rows.length} ${status.toLowerCase()} opportunit${rows.length === 1 ? "y" : "ies"}, ranked by ${intent.sort ?? "model advantage"}. Calibrated probability drives the decision — raw probability is shown separately and never relabeled.`,
+    title: `${status} opportunities`,
+    blocks: [table, { type: "markdown", content: `_${prov}_` }],
+    sources: res.sources, warnings: res.warnings, suggested: opportunitySuggestions(),
+  };
+}
+
+async function composeScientific(input: ProviderInput, view: "breakers" | "performance" | "calibration"): Promise<Composed> {
+  const res = await input.invoke<import("../tools/prizepicks/get-scientific-metrics").ScientificMetricsOutput>("getScientificMetrics", {});
+  const d = res.data;
+  const blocks: Composed["blocks"] = [];
+  let answer: string;
+
+  if (view === "breakers") {
+    answer = d.circuitBreakers.activeCount === 0 ? "No active scientific circuit breakers." : `${d.circuitBreakers.activeCount} active circuit breaker(s).`;
+    blocks.push(d.circuitBreakers.events.length === 0
+      ? { type: "markdown", content: answer }
+      : { type: "table", title: "Active circuit breakers", columns: [
+          { key: "market", label: "Market" }, { key: "type", label: "Breaker" }, { key: "reason", label: "Reason" }, { key: "sev", label: "Severity" },
+        ], rows: d.circuitBreakers.events.map((e) => ({ market: e.market ?? "—", type: e.breakerType, reason: e.reason, sev: e.severity })) });
+  } else if (view === "performance") {
+    answer = d.modelRegistry.length === 0 ? "No model-performance metrics are persisted yet." : `Model performance for ${d.modelRegistry.length} market(s) (from persisted Supabase metrics).`;
+    blocks.push(d.modelRegistry.length === 0
+      ? { type: "markdown", content: `${answer} Metrics populate from forward-graded results — thin samples read INSUFFICIENT DATA, not zero error.` }
+      : { type: "table", title: "Model performance by market", columns: [
+          { key: "market", label: "Market" }, { key: "state", label: "State" }, { key: "n", label: "Prospective n" },
+          { key: "brier", label: "Brier" }, { key: "ll", label: "Log loss" }, { key: "ce", label: "Calib err" },
+        ], rows: d.modelRegistry.map((m) => ({ market: m.market, state: m.state, n: m.prospectiveSample, brier: m.brier ?? "INSUFFICIENT", ll: m.logLoss ?? "INSUFFICIENT", ce: m.calibrationError ?? "INSUFFICIENT" })) });
+  } else {
+    answer = d.calibration.status === "OK" ? `Calibration available (${d.calibration.sampleCount} graded).` : `Calibration IN PROGRESS — ${d.calibration.sampleCount} graded (need ≥ 100).`;
+    blocks.push(d.calibration.status !== "OK"
+      ? { type: "markdown", content: `${answer} No calibration curve is claimed until the prospective sample is sufficient.` }
+      : { type: "table", title: "Calibration (predicted vs observed)", columns: [
+          { key: "bucket", label: "Predicted" }, { key: "predicted", label: "Mean predicted" }, { key: "observed", label: "Observed" }, { key: "n", label: "n" },
+        ], rows: d.calibration.buckets.map((b) => ({ bucket: b.bucket, predicted: b.predicted, observed: b.observed, n: b.n })) });
+  }
+  return { answer, blocks, sources: res.sources, warnings: res.warnings, suggested: opportunitySuggestions() };
+}
+
+function opportunitySuggestions(): string[] {
+  return [
+    "Which PrizePicks lines are strongest?",
+    "Give me your best pick",
+    "Show current WATCH candidates",
+    "Model performance by market",
+  ];
 }
 
 async function composeFollowup(input: ProviderInput, intent: Intent): Promise<Composed> {
