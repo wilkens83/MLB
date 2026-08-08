@@ -41,12 +41,26 @@ export interface OpportunityInput {
   dataQuality: number; // 0..100
   volatility: number; // 0..100
 
-  // robustness (from runSensitivity / simulation CI)
+  // robustness (from the fragility sweep / simulation CI)
   fragility: number; // 0..100
   worstCaseSelectedProbability?: number;
   uncertaintyLow: number;
   uncertaintyHigh: number;
   trainingSupport: number; // 0..1 (1 = fully inside training support)
+
+  // sensitivity/fragility detail (from runFragilityAnalysis) — all optional
+  fragilityLevel?: "LOW" | "MODERATE" | "HIGH" | "EXTREME";
+  scenarioProbabilities?: { label: string; assumption: string; probability: number }[];
+  probabilityRange?: number;
+  medianScenarioProbability?: number;
+  directionFlipCount?: number;
+  /** Preferred side is not robust under plausible scenarios ⇒ must not qualify. */
+  directionUnstable?: boolean;
+
+  // separated prediction-uncertainty sources
+  monteCarloStdError?: number;
+  modelInputUncertainty?: number;
+  dataMissingness?: number;
 
   // calibration
   calibration: CalibrationModel;
@@ -144,6 +158,9 @@ export function assessOpportunity(
     if (input.fragility > policy.maximumFragility) softMiss.push("FRAGILITY_ABOVE_MAX");
     if (policy.maximumVolatility !== undefined && input.volatility > policy.maximumVolatility) softMiss.push("VOLATILITY_ABOVE_MAX");
     if (input.worstCaseSelectedProbability !== undefined && input.worstCaseSelectedProbability < policy.minimumSelectedSideProbability) softMiss.push("SENSITIVITY_WORST_CASE");
+    // Critical rule: plausible scenarios repeatedly crossing 50% / reversing the
+    // preferred side ⇒ the direction is not robust ⇒ do NOT qualify.
+    if (input.directionUnstable) softMiss.push("DIRECTION_UNSTABLE");
 
     if (gates.noBet.length > 0 || softMiss.length > 0) {
       status = "NO_PLAY";
@@ -174,6 +191,15 @@ export function assessOpportunity(
     uncertaintyLow: input.uncertaintyLow, uncertaintyHigh: input.uncertaintyHigh,
     dataQuality: input.dataQuality, trainingSupport: input.trainingSupport,
     modelLifecycleState: input.marketValidationState, fragility: input.fragility, volatility: input.volatility,
+    fragilityLevel: input.fragilityLevel,
+    scenarioProbabilities: input.scenarioProbabilities,
+    probabilityRange: input.probabilityRange,
+    medianScenarioProbability: input.medianScenarioProbability,
+    directionFlipCount: input.directionFlipCount,
+    directionUnstable: input.directionUnstable,
+    monteCarloStdError: input.monteCarloStdError,
+    modelInputUncertainty: input.modelInputUncertainty,
+    dataMissingness: input.dataMissingness,
     lineupStatus: input.lineupRequired ? (input.lineupConfirmed ? "confirmed" : "projected") : "not_required",
     starterStatus: input.pitcherMateriallyRelevant ? (input.starterConfirmed ? "confirmed" : "projected") : "not_relevant",
     dataFreshness: input.lineAgeMinutes === undefined ? "unknown" : input.lineAgeMinutes > policy.maximumLineAgeMinutes ? "stale" : "fresh",

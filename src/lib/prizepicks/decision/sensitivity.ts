@@ -20,7 +20,7 @@ const PITCHER_FIELD: Record<string, keyof PitcherGameOutcome> = {
 };
 
 /** Scale the K/BB/hit rates by an "offense" multiplier and renormalize. */
-function scaleRates(r: PaRates, offenseMult: number, kMult = 1): PaRates {
+export function scaleRates(r: PaRates, offenseMult: number, kMult = 1): PaRates {
   const s = {
     k: r.k * kMult, bb: r.bb, hbp: r.hbp,
     single: r.single * offenseMult, double: r.double * offenseMult,

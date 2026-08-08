@@ -18,6 +18,7 @@ import type { CanonicalLineSnapshot } from "@/lib/prizepicks/ingestion/snapshot"
 import { assessOpportunity, type OpportunityInput } from "@/lib/prizepicks/opportunity/engine";
 import { canonicalOpportunityAssessmentSchema } from "@/lib/prizepicks/opportunity/types";
 import { independentBaseline } from "@/lib/prizepicks/opportunity/baselines";
+import { predictionUncertainty } from "@/lib/prizepicks/opportunity/uncertainty";
 import { computeLegGates, type LegFacts } from "@/lib/prizepicks/decision/veto";
 import { DEFAULT_DECISION_POLICY } from "@/lib/prizepicks/decision/policy";
 import type { CalibrationModel } from "@/lib/prizepicks/opportunity/calibration";
@@ -111,15 +112,32 @@ export function calibrationNode(deps: OpportunityDeps) {
   });
 }
 
-/** node 6 — uncertainty band (from the simulation CI). */
+/** node 6 — SEPARATED prediction-uncertainty decomposition (never one number). */
 export const uncertaintyNode = defineNode({
   id: "uncertainty",
-  description: "Surface the projection uncertainty band.",
-  inputSchema: custom<ProjectionFacts>(),
-  outputSchema: z.object({ low: z.number(), high: z.number() }),
-  dependsOn: ["projection"],
-  selectInput: (i) => ({ facts: readFacts<ProjectionFacts>(i, "projection") }),
-  run: async (input) => ok({ low: input.facts.uncertaintyLow, high: input.facts.uncertaintyHigh }),
+  description: "Decompose uncertainty: Monte-Carlo error, model/input, data missingness (kept separate).",
+  inputSchema: z.object({}),
+  outputSchema: z.object({
+    low: z.number(), high: z.number(),
+    monteCarloStdError: z.number(), modelInputUncertainty: z.number(), dataMissingness: z.number(),
+  }),
+  dependsOn: ["projection", "sensitivity"],
+  selectInput: () => ({}),
+  run: async (_input, ctx) => {
+    const proj = readFacts<ProjectionFacts>(ctx.inputs, "projection");
+    const sens = readFacts<SensitivityFacts>(ctx.inputs, "sensitivity");
+    const selected = Math.max(proj.rawProbabilityMore, proj.rawProbabilityLess);
+    const u = predictionUncertainty({
+      probability: selected,
+      iterations: proj.iterations ?? 10_000,
+      probabilityRange: sens.probabilityRange ?? 0,
+      dataCompleteness: proj.dataCompleteness ?? 1,
+    });
+    return ok({
+      low: proj.uncertaintyLow, high: proj.uncertaintyHigh,
+      monteCarloStdError: u.monteCarloStdError, modelInputUncertainty: u.modelInputUncertainty, dataMissingness: u.dataMissingness,
+    });
+  },
 });
 
 /** node 7 — sensitivity sweep on the selected side. */
@@ -177,7 +195,7 @@ export const vetoesNode = defineNode({
   description: "Assemble the opportunity input and compute the mandatory scientific vetoes.",
   inputSchema: z.object({}),
   outputSchema: z.object({ input: z.custom<OpportunityInput>(), vetoes: z.array(z.object({ code: z.string(), message: z.string() })) }),
-  dependsOn: ["resolveLine", "loadPregameSnapshot", "projection", "calibration", "fragility", "trustedScientificFacts"],
+  dependsOn: ["resolveLine", "loadPregameSnapshot", "projection", "calibration", "sensitivity", "fragility", "uncertainty", "trustedScientificFacts"],
   selectInput: () => ({}),
   run: async (_input, ctx) => {
     const line = readFacts<LineFacts>(ctx.inputs, "resolveLine");
@@ -185,6 +203,8 @@ export const vetoesNode = defineNode({
     const proj = readFacts<ProjectionFacts>(ctx.inputs, "projection");
     const cal = readFacts<CalibrationModel>(ctx.inputs, "calibration");
     const frag = ctx.inputs.fragility as { fragility: number; worstCase?: number };
+    const sens = readFacts<SensitivityFacts>(ctx.inputs, "sensitivity");
+    const unc = ctx.inputs.uncertainty as { monteCarloStdError: number; modelInputUncertainty: number; dataMissingness: number };
     const sci = readFacts<ScientificFacts>(ctx.inputs, "trustedScientificFacts");
 
     const input: OpportunityInput = {
@@ -194,6 +214,10 @@ export const vetoesNode = defineNode({
       projectionMean: proj.projectionMean, projectionMedian: proj.projectionMedian,
       dataQuality: proj.dataQuality, volatility: proj.volatility,
       fragility: frag.fragility, worstCaseSelectedProbability: frag.worstCase,
+      fragilityLevel: sens.fragilityLevel, scenarioProbabilities: sens.scenarioProbabilities,
+      probabilityRange: sens.probabilityRange, medianScenarioProbability: sens.medianScenarioProbability,
+      directionFlipCount: sens.directionFlipCount, directionUnstable: sens.directionUnstable,
+      monteCarloStdError: unc.monteCarloStdError, modelInputUncertainty: unc.modelInputUncertainty, dataMissingness: unc.dataMissingness,
       uncertaintyLow: proj.uncertaintyLow, uncertaintyHigh: proj.uncertaintyHigh,
       trainingSupport: sci.trainingSupport, calibration: cal,
       marketValidationState: sci.marketValidationState, calibrationDegraded: sci.calibrationDegraded,

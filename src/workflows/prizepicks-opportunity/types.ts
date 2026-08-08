@@ -25,11 +25,22 @@ export interface ProjectionFacts {
   volatility: number;
   uncertaintyLow: number;
   uncertaintyHigh: number;
+  /** Simulation iterations behind the probabilities (for Monte-Carlo error). */
+  iterations?: number;
+  /** Fraction of expected inputs present, 0..1 (completeness, not quality). */
+  dataCompleteness?: number;
 }
 
 export interface SensitivityFacts {
   fragility: number;
   worstCaseSelectedProbability?: number;
+  // Full fragility summary (from runFragilityAnalysis) — optional/additive.
+  fragilityLevel?: "LOW" | "MODERATE" | "HIGH" | "EXTREME";
+  scenarioProbabilities?: { label: string; assumption: string; probability: number }[];
+  probabilityRange?: number;
+  medianScenarioProbability?: number;
+  directionFlipCount?: number;
+  directionUnstable?: boolean;
 }
 
 export interface PregameFacts {

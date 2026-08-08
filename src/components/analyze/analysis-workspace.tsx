@@ -152,7 +152,7 @@ function EntryCard({ entry }: { entry: WorkspaceEntry }) {
             <Metric label="Entered" value={formatAmerican(Number(odds))} muted />
             <Metric label="Edge" value={pct(edge.edge)} tone={edge.edge > 0 ? "pos" : "neg"} />
             <Metric label="EV" value={formatSigned(edge.ev * 100) + "%"} tone={edge.ev > 0 ? "pos" : "neg"} />
-            <Metric label="Confidence" value={`${a.recommendation.confidence}%`} />
+            <Metric label="Model confidence" value={`${a.recommendation.confidence}/100`} />
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", dqTone(data.dataQuality?.score ?? 0))}>
