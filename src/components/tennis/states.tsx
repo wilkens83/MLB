@@ -7,8 +7,9 @@
    ========================================================================== */
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import {
-  Info, PlugZap, Clock, TriangleAlert, Cpu, Database, SearchX, type LucideIcon,
+  Info, PlugZap, Clock, TriangleAlert, Cpu, Database, SearchX, ArrowRight, type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/primitives";
@@ -50,7 +51,11 @@ export function NoticeCard({
   );
 }
 
-/** The canonical "no credentialed live source" state. */
+/**
+ * No paid live feed — but NOT a dead end. Free historical analytics, manual
+ * matchups, and demo data are available, so this routes the user to what works
+ * instead of only reporting what doesn't. LIVE is never faked.
+ */
 export function ProviderNotConfigured({
   what = "matches",
   className,
@@ -59,10 +64,30 @@ export function ProviderNotConfigured({
   className?: string;
 }) {
   return (
-    <NoticeCard icon={PlugZap} title="Live Tennis provider not configured" tone="warning" className={className}>
-      No credentialed data source is connected, so live {what} are unavailable. Every
-      provider adapter (Sportradar, SportsDataIO, API-Tennis) is wired and inert by
-      design until a server-side API key is set — nothing is fabricated in its place.
+    <NoticeCard
+      icon={PlugZap}
+      title="Automated live feed unavailable"
+      tone="info"
+      className={className}
+      action={
+        <div className="flex flex-wrap justify-center gap-2">
+          <Link href="/tennis/players" className="inline-flex items-center gap-1 rounded-lg bg-brand-500/12 px-3 py-1.5 text-sm font-medium text-brand-500 transition hover:bg-brand-500/20">
+            Browse players <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+          <Link href="/tennis/matches" className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition hover:border-brand-500/40">
+            Historical matches
+          </Link>
+          <Link href="/tennis/data-health" className="inline-flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-sm font-medium transition hover:border-brand-500/40">
+            Data mode &amp; sources
+          </Link>
+        </div>
+      }
+    >
+      No paid provider key is set, so live {what} aren&apos;t available. The Tennis section
+      still runs on <span className="font-medium text-foreground">free historical analytics</span> and
+      manual matchups — real ATP/WTA data, not fabricated. The Sportradar, SportsDataIO and
+      API-Tennis adapters stay inert until a server-side API key is set; free/historical data is
+      never presented as live.
     </NoticeCard>
   );
 }

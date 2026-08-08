@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Loader2 } from "lucide-react";
@@ -98,9 +99,11 @@ export function PlayerSearch({
       {open && debounced.trim().length >= 2 && !searchable && (
         <div className="glass-strong absolute z-50 mt-2 w-full overflow-hidden rounded-xl border border-border shadow-xl">
           <div className="px-3 py-3 text-sm text-muted">
-            <span className="font-medium text-foreground">Live Tennis provider not configured.</span>
+            <span className="font-medium text-foreground">Instant search needs a paid live feed.</span>
             <span className="mt-0.5 block text-xs text-muted-2">
-              Player search activates when a credentialed data source is connected.
+              Browse the free historical{" "}
+              <Link href="/tennis/players" className="text-brand-500 hover:underline">player directory</Link>{" "}
+              — real ATP/WTA data, never fabricated.
             </span>
           </div>
         </div>
