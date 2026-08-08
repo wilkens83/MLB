@@ -8,9 +8,19 @@ export const revalidate = 0;
 
 const STATUS_TONE: Record<string, { label: string; cls: string }> = {
   ready: { label: "Ready", cls: "text-[var(--positive)]" },
+  configured_unverified: { label: "Configured — unverified", cls: "text-[var(--warning)]" },
+  authenticating: { label: "Authenticating", cls: "text-muted-2" },
+  degraded: { label: "Degraded", cls: "text-[var(--warning)]" },
+  rate_limited: { label: "Rate limited", cls: "text-[var(--warning)]" },
+  entitlement_missing: { label: "Entitlement missing", cls: "text-[var(--warning)]" },
   unconfigured: { label: "Unconfigured", cls: "text-muted-2" },
+  disabled: { label: "Disabled", cls: "text-muted-2" },
   error: { label: "Error", cls: "text-[var(--negative)]" },
   fixture: { label: "Fixture (test-only)", cls: "text-[var(--warning)]" },
+};
+
+const CAP_MARK: Record<string, string> = {
+  verified: "✓", supported: "•", entitlement_missing: "⨯", unsupported: "–",
 };
 
 export default function TennisDataHealthPage() {
@@ -73,14 +83,28 @@ export default function TennisDataHealthPage() {
                   </span>
                   <span className={`text-sm font-semibold ${tone.cls}`}>{tone.label}</span>
                   <span className="ml-auto flex flex-wrap gap-1">
-                    {p.capabilities.map((c) => (
-                      <span key={c} className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-2">
-                        {c}
-                      </span>
-                    ))}
+                    {p.capabilities.map((c) => {
+                      const cs = p.capabilityStatus?.[c];
+                      const mark = cs ? CAP_MARK[cs] : "";
+                      return (
+                        <span
+                          key={c}
+                          title={cs ?? "declared"}
+                          className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-2"
+                        >
+                          {mark && <span className="mr-1">{mark}</span>}{c}
+                        </span>
+                      );
+                    })}
                   </span>
                 </div>
                 {p.detail && <p className="mt-2 text-xs text-muted">{p.detail}</p>}
+                {p.lastVerifiedAt && (
+                  <p className="mt-1 text-[11px] text-muted-2">
+                    Last verified {new Date(p.lastVerifiedAt).toISOString().replace("T", " ").slice(0, 19)} UTC
+                    {p.avgResponseMs ? ` · ~${Math.round(p.avgResponseMs)}ms` : ""}
+                  </p>
+                )}
               </div>
             );
           })}

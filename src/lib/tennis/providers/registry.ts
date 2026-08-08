@@ -13,8 +13,14 @@
 import type {
   HistoricalQuery, ScheduleQuery, TennisDataProvider, TennisProviderHealth,
 } from "./types";
+import { ROUTABLE_STATUSES } from "./types";
 import type { RankingSnapshot, TennisPlayer, TennisTour, Tournament } from "../domain";
 import { getAllTennisHealth } from "./health";
+
+export interface SelectionReason {
+  provider: string;
+  reason: string;
+}
 
 export interface RegistryOptions {
   /** Providers in priority order (first = tried first). */
@@ -41,8 +47,21 @@ export class TennisProviderRegistry {
       if (!p.capabilities[capability]) return false;
       const s = p.status();
       if (s === "fixture") return this.allowFixtures;
-      return s === "ready";
+      // `ready`, `configured_unverified` (may EARN ready), and `degraded` are all
+      // routable; unconfigured/entitlement_missing/disabled/error are not.
+      return ROUTABLE_STATUSES.includes(s);
     });
+  }
+
+  /**
+   * Explain, in priority order, which providers are eligible for a capability and
+   * why — so the caller can audit selection rather than trust a black box.
+   */
+  selectionFor(capability: keyof TennisDataProvider["capabilities"]): SelectionReason[] {
+    return this.eligible(capability).map((p, i) => ({
+      provider: p.name,
+      reason: `${p.status().toUpperCase()} + ${String(capability)} capability + priority ${i + 1}`,
+    }));
   }
 
   /** Try each eligible provider until one returns a non-empty array. */

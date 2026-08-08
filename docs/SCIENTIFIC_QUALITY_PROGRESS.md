@@ -235,3 +235,58 @@ verified live and cleaned up.
   the existing interfaces and unit-tested with the in-memory fallback.
 - Wiring live feature-support metadata into `outsideTrainingSupport` and streaming
   provider health into `requiredSimDependencyUnavailable` remain follow-ups.
+
+---
+
+## Tennis Live Provider Configuration Loop
+
+Converting the inert Tennis live providers (Sportradar, SportsDataIO, API-Tennis)
+into verified, graph-orchestrated adapters. Reuses the existing provider registry,
+graph engine, verification layer, and Tennis domain — nothing is recreated.
+
+```
+goal:                    configure + verify the 3 Tennis live providers end-to-end
+iteration:               1
+branch:                  integration/tennis-live-providers  (based on origin/main,
+                         which already contains the squash-merged graph architecture
+                         PR #14 + Supabase persistence PR #13 — trees identical)
+last_verified_commit:    (origin/main @ 85cf4cc)
+current_provider:        all three (adapters + factory + workflow complete)
+current_capability:      schedule/results/rankings/players wired + acquisition graph
+last_successful_gate:    lint + typecheck + bun test src (456 pass / 0 fail) green
+current_failure:         —
+exact_failing_command:   —
+exact_error:             —
+root_cause:              —
+attempts_on_root_cause:  0
+official_documentation_checked:
+  - API-Tennis: https://api-tennis.com/documentation (verbatim field names captured)
+  - Sportradar Tennis v3: https://developer.sportradar.com/tennis (endpoints confirmed)
+  - SportsDataIO Tennis: v3/tennis data dictionary (portal-gated; documented shape)
+credential_status:       SPORTRADAR_TENNIS_API_KEY ABSENT · SPORTSDATAIO_TENNIS_API_KEY
+                         ABSENT · API_TENNIS_API_KEY ABSENT
+entitlement_status:      unknown (no credentials to probe)
+live_mapping_verified:   NONE live-verifiable in this environment (no keys) — all live
+                         verification is BLOCKED_CREDENTIAL by design; adapters are
+                         built from official documented contracts + contract fixtures
+tests_added:             +53 tests — http.test.ts (client), adapters.test.ts
+                         (contract), credentialed.test.ts (factory lifecycle),
+                         verify.test.ts (invariants), observations.test.ts
+                         (point-in-time), workflow.test.ts (graph acquisition)
+next_action:             validate (verify) → rebase on origin/main → PR → CI → merge
+external_blocker:        Live verification of all three providers requires vendor API
+                         keys (server-side) that are absent in this environment.
+                         All live auth = BLOCKED_CREDENTIAL; no false READY exists.
+```
+
+### Provider success matrix (live verification)
+
+| Provider | Auth | Schedule | Results | Rankings | Players | Historical |
+|----------|------|----------|---------|----------|---------|------------|
+| Sportradar   | BLOCKED_CREDENTIAL | contract-tested | contract-tested | contract-tested | contract-tested | contract-tested |
+| SportsDataIO | BLOCKED_CREDENTIAL | contract-tested | contract-tested | contract-tested | contract-tested | UNSUPPORTED |
+| API-Tennis   | BLOCKED_CREDENTIAL | contract-tested | contract-tested | contract-tested | contract-tested | UNSUPPORTED |
+
+`contract-tested` = adapter built from official documented schema, exercised by
+committed sanitized fixtures + malformed/missing-field rejection tests. Live auth
+verification is blocked pending credentials — no provider is marked READY.
