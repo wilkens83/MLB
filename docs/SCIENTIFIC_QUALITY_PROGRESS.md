@@ -420,3 +420,25 @@ ui:      no "100% confidence"; show Data Completeness / Model Confidence /
          Calibration Support / Probability Range as distinct concepts
 next:    build modules + engine gate + UI labels + tests
 ```
+
+---
+
+## Scientific Health Control Center Loop
+
+Upgrade /health into the canonical Scientific Health & Model Performance center,
+reading ONLY trusted server metrics from the existing Supabase scientific tables
++ provider health. No duplicate health system; no client-provided statuses; no
+demo numbers; zero-data ⇒ INSUFFICIENT DATA (never zero-error perfection).
+
+```
+branch:  integration/scientific-health (from origin/main @ 8b6fcbf)
+build:   lib/supabase/scientific-health.ts — injectable ScientificDataSource
+         (supabase-backed default; testable) + pure assembleScientificHealth →
+         report sections: system, persistence (counts+latest), point-in-time,
+         model registry, calibration buckets, drift, circuit breakers, ungraded,
+         performance windows (7d/30d/100/500/season), scientific readiness
+rule:    realized profitability NOT DEMONSTRATED unless sample requirements met;
+         empty sample ⇒ INSUFFICIENT_DATA
+ui:      /health server component renders every section from the report
+next:    build aggregator + page + tests + validate
+```
