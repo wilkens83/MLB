@@ -11,8 +11,8 @@
 import {
   sportradarProvider, sportsDataIoProvider, apiTennisProvider,
 } from "./providers/liveProviders";
-import { getAllTennisHealth } from "./providers/health";
-import type { ProviderStatus, TennisProviderHealth } from "./providers/types";
+import { getAllTennisHealth, getTennisHealth } from "./providers/health";
+import type { CapabilityStatus, ProviderStatus, TennisProviderHealth } from "./providers/types";
 
 export interface TennisProviderStatusRow {
   name: string;
@@ -20,7 +20,13 @@ export interface TennisProviderStatusRow {
   detail?: string;
   /** Capabilities the provider declares (for the health surface). */
   capabilities: string[];
+  /** Per-capability runtime availability (verified/supported/entitlement_missing/unsupported). */
+  capabilityStatus?: Partial<Record<string, CapabilityStatus>>;
+  /** True only when a verified live call has ever succeeded — never mere key presence. */
   configured: boolean;
+  /** Last time a live call authenticated + validated + mapped + verified. */
+  lastVerifiedAt?: number;
+  avgResponseMs?: number;
 }
 
 export interface TennisDataStatus {
@@ -41,13 +47,18 @@ export function getTennisDataStatus(): TennisDataStatus {
 
   const providers: TennisProviderStatusRow[] = live.map((p) => {
     const status = p.status(); // refreshes health + reflects credentials
+    const h = getTennisHealth(p.name);
     return {
       name: p.name,
       status,
+      detail: h?.detail,
       capabilities: Object.entries(p.capabilities)
         .filter(([, v]) => v)
         .map(([k]) => k),
+      capabilityStatus: p.capabilityStatus?.(),
       configured: status === "ready",
+      lastVerifiedAt: h?.lastVerifiedAt,
+      avgResponseMs: h?.avgResponseMs,
     };
   });
 

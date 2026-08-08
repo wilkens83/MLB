@@ -251,9 +251,9 @@ branch:                  integration/tennis-live-providers  (based on origin/mai
                          which already contains the squash-merged graph architecture
                          PR #14 + Supabase persistence PR #13 — trees identical)
 last_verified_commit:    (origin/main @ 85cf4cc)
-current_provider:        shared infrastructure (Phase 1)
-current_capability:      http client + status model + provenance
-last_successful_gate:    discovery complete (arch mapped, docs consulted)
+current_provider:        all three (adapters + factory + workflow complete)
+current_capability:      schedule/results/rankings/players wired + acquisition graph
+last_successful_gate:    lint + typecheck + bun test src (456 pass / 0 fail) green
 current_failure:         —
 exact_failing_command:   —
 exact_error:             —
@@ -269,10 +269,14 @@ entitlement_status:      unknown (no credentials to probe)
 live_mapping_verified:   NONE live-verifiable in this environment (no keys) — all live
                          verification is BLOCKED_CREDENTIAL by design; adapters are
                          built from official documented contracts + contract fixtures
-tests_added:             (in progress)
-next_action:             Phase 1 — shared HTTP client, expanded status model, provenance
+tests_added:             +53 tests — http.test.ts (client), adapters.test.ts
+                         (contract), credentialed.test.ts (factory lifecycle),
+                         verify.test.ts (invariants), observations.test.ts
+                         (point-in-time), workflow.test.ts (graph acquisition)
+next_action:             validate (verify) → rebase on origin/main → PR → CI → merge
 external_blocker:        Live verification of all three providers requires vendor API
                          keys (server-side) that are absent in this environment.
+                         All live auth = BLOCKED_CREDENTIAL; no false READY exists.
 ```
 
 ### Provider success matrix (live verification)

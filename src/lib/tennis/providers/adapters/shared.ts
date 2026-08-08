@@ -125,8 +125,9 @@ export function toMatchState(raw: string | undefined | null): MatchState | undef
   if (s.includes("retired") || s.includes("ret.")) return "retired";
   if (s.includes("walkover") || s.includes("w/o") || s.includes("walk over")) return "walkover";
   if (["cancelled", "canceled", "abandoned"].some((k) => s.includes(k))) return "cancelled";
-  if (["live", "inprogress", "in progress", "started", "playing", "1st set", "set 1"].some((k) => s.includes(k))) return "live";
-  if (["notstarted", "not started", "scheduled", "pending", "upcoming"].some((k) => s.includes(k))) return "scheduled";
+  // Check "not started"/scheduled BEFORE live: "not started" contains "started".
+  if (["not started", "notstarted", "scheduled", "pending", "upcoming"].some((k) => s.includes(k))) return "scheduled";
+  if (["live", "inprogress", "in progress", "playing"].some((k) => s.includes(k))) return "live";
   return undefined;
 }
 

@@ -110,6 +110,26 @@ export function verifyRankings(rankings: RankingSnapshot[], opts: { featureCutof
   return { verdict: worst(issues), issues, passed, total: rankings.length };
 }
 
+/**
+ * Partition matches into those that pass independent verification and those that
+ * must be rejected (kept OUT of the workflow output / predictive features).
+ * Duplicates (by id) after the first occurrence are rejected.
+ */
+export function partitionMatches(matches: TennisMatch[]): { accepted: TennisMatch[]; rejected: { match: TennisMatch; issues: VerifyIssue[] }[] } {
+  const accepted: TennisMatch[] = [];
+  const rejected: { match: TennisMatch; issues: VerifyIssue[] }[] = [];
+  const seen = new Set<string>();
+  for (const m of matches) {
+    const issues: VerifyIssue[] = [];
+    if (seen.has(m.id)) issues.push({ code: "DUPLICATE_MATCH_ID", severity: "reject", detail: m.id, ref: m.id });
+    seen.add(m.id);
+    const ok = checkMatch(m, issues) && !issues.some((i) => i.severity === "reject");
+    if (ok) accepted.push(m);
+    else rejected.push({ match: m, issues });
+  }
+  return { accepted, rejected };
+}
+
 /** Convenience predicate for the provider factory: did a batch clear REJECT? */
 export function matchesAcceptable(matches: TennisMatch[]): boolean {
   return verifyMatches(matches).verdict !== "REJECT";
