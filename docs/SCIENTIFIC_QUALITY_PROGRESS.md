@@ -398,3 +398,25 @@ tests:         +26 — opportunity engine (8 success gates: raw≠calibrated,
 result:        lint + tsc + build green; bun test src 509 pass / 0 fail
 next_action:   PR → CI → merge → post-merge validation
 ```
+
+---
+
+## Uncertainty & Fragility Loop
+
+Extend the Opportunity Engine with rigorous uncertainty/sensitivity — no model
+replacement; reuses runSensitivity's sim approach + the decision gates.
+
+```
+branch:  integration/uncertainty-fragility (from origin/main @ 19c7ac9, incl. #20)
+new:     opportunity/uncertainty.ts (SEPARATED Monte-Carlo error / model-input
+         uncertainty / data-missingness — never one merged "confidence"),
+         opportunity/fragility.ts (configurable perturbation set + summarizer:
+         baseProbability, scenarioProbabilities[], probabilityRange,
+         medianScenarioProbability, directionFlipCount, fragilityScore,
+         fragilityLevel LOW/MODERATE/HIGH/EXTREME — thresholds configurable)
+rule:    scenarios repeatedly crossing 50% / reversing the preferred side ⇒
+         directionUnstable ⇒ NEVER QUALIFIED (engine gate DIRECTION_UNSTABLE)
+ui:      no "100% confidence"; show Data Completeness / Model Confidence /
+         Calibration Support / Probability Range as distinct concepts
+next:    build modules + engine gate + UI labels + tests
+```
