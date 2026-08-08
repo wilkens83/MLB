@@ -9,7 +9,7 @@
 
 import {
   Activity, CalendarDays, Microscope, LayoutGrid, Users, HeartPulse, ClipboardList,
-  Boxes, History, FlaskConical, Sparkles, Gavel, type LucideIcon,
+  Boxes, History, FlaskConical, Sparkles, Gavel, Star, type LucideIcon,
 } from "lucide-react";
 import type { SportKey } from "./types";
 
@@ -59,6 +59,7 @@ const MLB_UI: SportUi = {
         { href: "/analyze", label: "Prop Explorer", icon: Microscope, match: (p) => p.startsWith("/analyze") },
         { href: "/slate", label: "Player Analysis", icon: LayoutGrid, match: (p) => p.startsWith("/slate") },
         { href: "/players", label: "Players", icon: Users, match: (p) => p.startsWith("/players") },
+        { href: "/my-players", label: "My Players", icon: Star, match: (p) => p.startsWith("/my-players") },
       ],
     },
     {

@@ -442,3 +442,66 @@ rule:    realized profitability NOT DEMONSTRATED unless sample requirements met;
 ui:      /health server component renders every section from the report
 next:    build aggregator + page + tests + validate
 ```
+
+---
+
+## Player Favorites & Following Loop
+
+Add user-centered Favorites (bookmark) + Following (performance tracking), reusing
+the existing Players/Analysis pages, MLB data, graph engine, and Supabase. No
+second player-profile architecture. Favorites and Following are kept SEPARATE.
+Following/Favoriting NEVER affects model probabilities (display/nav only).
+
+```
+branch:  integration/player-favorites-following (from origin/main @ 8bff99f)
+auth:    no login UI exists; user state persists in localStorage (like the
+         PrizePicks board store) + Supabase+RLS when real auth exists
+db:      additive migration user_player_favorites + user_player_follows,
+         RLS auth.uid() ownership (mirrors legacy user-table conventions),
+         identity = canonical MLBAM player_id (never name)
+core:    lib/players/saved-players.ts (pure state ops, dedup, fav≠follow),
+         lib/players/performance.ts (L5/L10/L20/Season windows, trend rule,
+         variance/range/sample; prop history over/under/push kept SEPARATE from
+         model probability), followed-player-performance@1 graph (bounded fan-out)
+ui:      /my-players (Favorites/Following, empty state, followed cards),
+         performance view, ☆Favorite / Follow buttons on players + analysis header
+rule:    historical hit rate ≠ model probability; personalization never boosts model
+next:    build core + workflow + migration + UI + tests
+```
+
+### Delivered
+
+- **Pure core** — `src/lib/players/saved-players.ts` (favorites/follows kept
+  separate; dedup-enforced pure ops; identity = MLBAM `playerId`; preference data
+  documented as never-model-input) and `src/lib/players/performance.ts`
+  (L5/L10/L20/Season window summaries, rule-based non-predictive trend,
+  variability, and prop-history over/under/push that is HISTORICAL only — the
+  record has no probability field, so it cannot be read as a model output).
+  Missing data → `available:false`, never a fabricated 0.
+- **Persistence** — additive migration
+  `20260808130000_user_player_favorites_follows.sql`: `user_player_favorites` +
+  `user_player_follows`, RLS owner-only via `auth.uid()`, unique `(user_id,
+  player_id)` dedup, `preferred_metrics` display-only. Reuses the hardened
+  `se_touch_updated_at()` (search_path pinned — no new advisory). Applied to the
+  connected `mlb-edge` project; `database.types.ts` extended.
+- **Store** — `src/lib/players/store.ts`: Supabase-backed when an authenticated
+  session exists, else a localStorage baseline behind the same surface (graceful
+  degrade — no auth UI is wired). All mutations go through the pure ops.
+- **Workflow** — `followed-player-performance@1`
+  (`src/workflows/followed-player-performance/`): bounded-concurrency fan-out over
+  followed players, computes historical performance via `buildMetricPerformance`,
+  degrades a failing player to `available:false` without sinking the run. MLB
+  adapter fetches real game logs; server orchestrator resolves identity + default
+  metrics/lines.
+- **UI** — `/my-players` (separate Favorites + Following groups, counts, empty
+  state "Follow MLB players to build your personal research dashboard" + Browse
+  Players, followed cards with L5/L10/Season + trend + expandable performance
+  view), plus gold-star Favorite (never model-positive green) + Follow buttons on
+  the Players page and the analysis header. API routes:
+  `POST /api/my-players/performance`, `GET /api/players/resolve`.
+- **Tests** — `saved-players.test.ts`, `performance.test.ts`, and
+  `followed-player-performance/workflow.test.ts` (favorite/unfavorite,
+  follow/unfollow, dup prevention, fav≠follow independence, identity = MLBAM id,
+  window calcs, missing-data → null not 0, historical-hit-rate ≠ model-probability,
+  bounded concurrency, transparent per-player degradation). Suite: 576 pass / 0
+  fail. `pnpm verify` (lint + typecheck + tests + build) green.

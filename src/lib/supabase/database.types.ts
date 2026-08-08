@@ -838,6 +838,63 @@ export type Database = {
         }
         Relationships: []
       }
+      user_player_favorites: {
+        Row: {
+          created_at: string
+          id: string
+          player_id: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          player_id: number
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          player_id?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_player_follows: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          last_viewed_at: string | null
+          notes: string | null
+          player_id: number
+          preferred_metrics: string[]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_viewed_at?: string | null
+          notes?: string | null
+          player_id: number
+          preferred_metrics?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          last_viewed_at?: string | null
+          notes?: string | null
+          player_id?: number
+          preferred_metrics?: string[]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
