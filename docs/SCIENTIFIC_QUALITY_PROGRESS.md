@@ -333,3 +333,36 @@ REAL coverage (computed): ATP players 6 · WTA players 7 · ATP matches 7 · WTA
 matches 5 · ranking observations 12 · matches with serve stats 11 · without 1 ·
 years 2023–2024 · parse failures 0.
 ```
+
+---
+
+## PrizePicks Ingestion Loop
+
+Improve PrizePicks board ingestion into validated canonical line snapshots via a
+graph workflow (`prizepicks-import@1`), reusing the existing CSV parser, market
+canonicalizer, player/game resolver, snapshot table, and graph engine — nothing
+recreated.
+
+```
+iteration:        1
+branch:           integration/prizepicks-ingestion (from origin/main @ 93a9c35)
+pipeline:         loadInput→parseRows→normalizeMarkets→resolvePlayers→resolveGames
+                  →validate→reviewGate→persistSnapshots
+line states:      IMPORTED · NEEDS_REVIEW · VERIFIED · REJECTED (server-derived)
+idempotency:      inputHash(boardDate,player,market,line,projectionType) → no-op dup
+supersede:        changed line = new snapshot referencing the prior (never overwrite)
+verification:     browser/import can never set VERIFIED — only a trusted reviewGate
+persistence:      LineSnapshotStore (in-memory baseline + Supabase behind service key)
+migration:        20260808120000_pp_line_verification_status.sql — additive columns
+                  verification_status (4-state check) + player_name; no reset, no
+                  legacy-table change; database.types.ts updated to match
+routes:           POST /api/prizepicks/import (strips `reviews` → browser cannot
+                  VERIFY) · GET /api/prizepicks/lines?date= (reload persisted)
+tests:            +13 — snapshotStore (idempotent/supersede/no-overwrite/list) +
+                  prizepicks-import@1 workflow (CSV import, invalid→REJECTED,
+                  ambiguous→NEEDS_REVIEW, doubleheader→NEEDS_REVIEW, role-based
+                  market, idempotent re-import, supersede on change, trusted-review
+                  VERIFIED only on resolved lines, pre-parsed rows path)
+result:           lint + tsc + build green; bun test src 496 pass / 0 fail
+next_action:      PR → CI → merge → post-merge validation
+```

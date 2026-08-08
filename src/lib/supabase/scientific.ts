@@ -82,6 +82,50 @@ export async function recordLineSnapshot(input: LineSnapshotInput): Promise<stri
   });
 }
 
+type LineRow = Database["public"]["Tables"]["prizepicks_line_snapshots"]["Row"];
+
+/** Idempotency lookup: an existing snapshot with the exact input (payload) hash. */
+export async function findLineSnapshotByHash(payloadHashValue: string): Promise<LineRow | null> {
+  const client = getServiceClient();
+  if (!client) return null;
+  const { data, error } = await client
+    .from("prizepicks_line_snapshots")
+    .select("*")
+    .eq("payload_hash", payloadHashValue)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`line_snapshots hash read failed: ${error.message}`);
+  return data ?? null;
+}
+
+/** Most recent snapshot for a stable entry id (used to link a superseding line). */
+export async function latestLineSnapshotForEntry(entryId: string): Promise<LineRow | null> {
+  const client = getServiceClient();
+  if (!client) return null;
+  const { data, error } = await client
+    .from("prizepicks_line_snapshots")
+    .select("*")
+    .eq("entry_id", entryId)
+    .order("captured_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`line_snapshots entry read failed: ${error.message}`);
+  return data ?? null;
+}
+
+/** Reload all persisted snapshots for a board date (entry_id is `date|player|market`). */
+export async function listLineSnapshotsForBoard(boardDate: string): Promise<LineRow[]> {
+  const client = getServiceClient();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("prizepicks_line_snapshots")
+    .select("*")
+    .like("entry_id", `${boardDate}|%`)
+    .order("captured_at", { ascending: true });
+  if (error) throw new Error(`line_snapshots board read failed: ${error.message}`);
+  return data ?? [];
+}
+
 /* --------------------------- payout snapshots ----------------------------- */
 export type PayoutSnapshotInput = Omit<TablesInsert<"payout_snapshots">, "payload_hash"> & {
   payload_hash?: string;
