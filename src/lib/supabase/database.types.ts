@@ -728,11 +728,13 @@ export type Database = {
           market_key: string
           payload_hash: string
           player_id: number | null
+          player_name: string | null
           projection_type: string
           source_reference: string | null
           source_type: string
           supersedes_id: string | null
           user_id: string | null
+          verification_status: string
         }
         Insert: {
           captured_at?: string
@@ -745,11 +747,13 @@ export type Database = {
           market_key: string
           payload_hash: string
           player_id?: number | null
+          player_name?: string | null
           projection_type?: string
           source_reference?: string | null
           source_type: string
           supersedes_id?: string | null
           user_id?: string | null
+          verification_status?: string
         }
         Update: {
           captured_at?: string
@@ -762,11 +766,13 @@ export type Database = {
           market_key?: string
           payload_hash?: string
           player_id?: number | null
+          player_name?: string | null
           projection_type?: string
           source_reference?: string | null
           source_type?: string
           supersedes_id?: string | null
           user_id?: string | null
+          verification_status?: string
         }
         Relationships: [
           {
