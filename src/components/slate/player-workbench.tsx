@@ -21,6 +21,7 @@ import { SplitsPanel } from "./splits-panel";
 import { MatchupPanel } from "./matchup-panel";
 import { PitchMixPanel } from "./pitch-mix-panel";
 import { propsByCategory, getProp } from "@/lib/props/catalog";
+import { SavePlayerButtons } from "@/features/players/save-player-buttons";
 import { cn, pct } from "@/lib/utils";
 import type { AnalysisPayload } from "@/lib/mlb/analysis";
 import type { Side } from "@/lib/analytics/hitRate";
@@ -275,6 +276,7 @@ function Header({
             )}
             <h2 className="truncate text-[26px] font-black leading-none tracking-tight">{player?.name ?? "Loading…"}</h2>
             {context?.teamId && <TeamLogo teamId={context.teamId} name={context.teamName ?? ""} size={26} />}
+            <SavePlayerButtons playerId={playerId} className="ml-auto" />
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
             <span className="font-medium text-text-secondary">{context?.position || player?.position}</span>

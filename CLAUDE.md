@@ -264,6 +264,25 @@ namespace and reuses the pure core.
   envelope (`src/lib/http/envelope.ts`) — the default payload is unchanged. Design:
   `docs/architecture/`, `docs/WORKFLOWS.md`; audit: `docs/audit/`.
 
+- **Player Favorites & Following (`src/lib/players/`, `src/features/players/`,
+  `/my-players`).** A user-centered personal research space layered on the existing
+  Players/Analysis pages — no second player-profile architecture. **Favorites (a
+  bookmark) and Following (performance tracking) are TWO SEPARATE concepts**, never
+  one boolean: `saved-players.ts` holds the pure, dedup-enforced state ops; identity
+  is always the canonical MLBAM `playerId`, and follow preferences
+  (`preferredMetrics`, notes) are display-only and **never feed the model**.
+  `performance.ts` computes L5/L10/L20/Season window summaries, a rule-based
+  (non-predictive) trend, variability, and **prop-history over/under/push that is
+  HISTORICAL hit rate only** — the record carries no probability field, so it can't
+  be mistaken for the model's calibrated probability (the UI states this explicitly
+  and links to the analysis workbench for the model output). Persistence is additive
+  (`user_player_favorites` / `user_player_follows`, RLS owner-only via `auth.uid()`,
+  unique `(user_id, player_id)`); `store.ts` uses Supabase when authenticated, else a
+  localStorage baseline behind the same surface. The `followed-player-performance@1`
+  graph workflow fans out over followed players with bounded concurrency, degrading a
+  failed player to `available:false` (never fabricated). The favorite control is a
+  gold star, deliberately not the model-positive green. State: `docs/SCIENTIFIC_QUALITY_PROGRESS.md`.
+
 Other route-level pieces: `src/lib/mlb/slate.ts` + `/slate` (multi-game daily
 board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
 (team/game markets — NRFI, totals, run line). Design/consolidation docs live in
