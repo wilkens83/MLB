@@ -100,10 +100,12 @@ export function verifyRankings(rankings: RankingSnapshot[], opts: { featureCutof
     if (cutoff !== undefined && Date.parse(r.asOf) > cutoff) {
       reject("FUTURE_RANKING", `asOf ${r.asOf} > cutoff ${opts.featureCutoff}`); // no leakage into features
     }
-    const key = r.tour;
+    // Duplicate rank is only invalid WITHIN the same publication (tour + asOf);
+    // the same rank number on different dates is legitimate.
+    const key = `${r.tour}:${r.asOf}`;
     if (!rankByTour.has(key)) rankByTour.set(key, new Set());
     const set = rankByTour.get(key)!;
-    if (set.has(r.rank)) issues.push({ code: "DUPLICATE_RANK", severity: "warn", detail: `${key} rank ${r.rank}`, ref: r.playerId });
+    if (set.has(r.rank)) issues.push({ code: "DUPLICATE_RANK", severity: "warn", detail: `${r.tour} ${r.asOf} rank ${r.rank}`, ref: r.playerId });
     set.add(r.rank);
     if (ok) passed++;
   }
