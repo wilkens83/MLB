@@ -366,3 +366,35 @@ tests:            +13 — snapshotStore (idempotent/supersede/no-overwrite/list)
 result:           lint + tsc + build green; bun test src 496 pass / 0 fail
 next_action:      PR → CI → merge → post-merge validation
 ```
+
+---
+
+## Opportunity Engine Loop
+
+Build the Opportunity Engine on EXISTING projection/decision/backtest/graph infra
+— no second model engine. Input: a verified CanonicalLineSnapshot. Output:
+CanonicalOpportunityAssessment.
+
+```
+branch:        integration/opportunity-engine (from origin/main @ 1edea14, incl. #19)
+graph:         prizepicks-opportunity@1 — resolveLine → loadPregameSnapshot →
+               projection → independentBaseline → calibration → uncertainty →
+               sensitivity → fragility → trustedScientificFacts → vetoes →
+               opportunityDecision
+reuse:         computeLegGates/evaluateLeg (veto+status), runSensitivity (fragility),
+               poissonCdf (baselines), deriveMarketFacts (trusted facts), decision policy
+new:           calibration layer (raw→calibrated, explicit UNAVAILABLE state),
+               independent market baselines (pitcher K / outs / hitter hits / total bases),
+               CanonicalOpportunityAssessment + status (UNAVAILABLE/NO_PLAY/WATCH/
+               QUALIFIED_MORE/QUALIFIED_LESS)
+rules:         raw ≠ displayed prob (prefer calibrated); calibration unavailable ⇒
+               never QUALIFIED (degrade to WATCH); modelAdvantage = calibrated −
+               INDEPENDENT baseline (never model-vs-itself); vetoes server-derived
+tests:         +26 — opportunity engine (8 success gates: raw≠calibrated,
+               unavailable-calibration/unvalidated-model/poor-DQ/high-fragility/
+               stale-line block QUALIFIED, independent baseline, no-edge, veto
+               non-override, thin-calibration UNAVAILABLE, version-referencing
+               persistence) + graph workflow (11 nodes, QUALIFIED+persist, WATCH)
+result:        lint + tsc + build green; bun test src 509 pass / 0 fail
+next_action:   PR → CI → merge → post-merge validation
+```
