@@ -290,3 +290,46 @@ external_blocker:        Live verification of all three providers requires vendo
 `contract-tested` = adapter built from official documented schema, exercised by
 committed sanitized fixtures + malformed/missing-field rejection tests. Live auth
 verification is blocked pending credentials — no provider is marked READY.
+
+---
+
+## Free Tennis Data + UI Loop
+
+Make the Tennis section fully usable with NO paid API: free historical dataset
+(Jeff Sackmann tennis-abstract schema, non-commercial license), manual current
+matchup, and deterministic demo fixtures — all on the EXISTING provider layer,
+graph engine, verification, and model. Paid providers stay optional.
+
+```
+iteration:                 1
+branch:                    integration/free-tennis-data (from origin/main @ 43a62ce,
+                           which now contains the merged live-provider work #16)
+current_phase:             foundation — seed dataset + historical-free provider +
+                           data-mode model + status/UI + free-data graph workflow
+active_data_source:        curated Sackmann-schema sample (tennis_atp / tennis_wta)
+dataset_version:           seed-2026.08 (curated sample; full-import path provided)
+license_status:            data CC BY-NC-SA 4.0 — research/non-commercial (documented)
+download_status:           seed bundled (no network at build/test); optional live import
+normalization_status:      via parseHistoricalCsv + small players/rankings parsers
+identity_resolution_status: reuse data/identity.ts (never name-alone)
+provider_status:           historical-free READY (results/rankings/players/historical);
+                           manual READY; demo-fixture READY; paid live UNCONFIGURED
+graph_status:              tennis-free-data-acquisition@1 green (7 nodes, PASS verify,
+                           24 observations mapped; REJECT→persist skipped; leakage guard)
+supabase_status:           reuses raw_observations (sport=tennis via entity_type) +
+                           dataset provenance/version/license; no schema change
+ui_status:                 home shows Data Mode + availability + coverage/provenance (no
+                           more "unavailable"); data-health shows modes + free dataset
+                           provenance/coverage/license + all providers by mode
+tests:                     +23 (freeDataset, mode, status regression, freeModelIntegration,
+                           free-data workflow). 483 pass / 0 fail. lint+tsc+build green.
+last_failure:              ATP/WTA match-id collision → verify REJECT (fixed: namespace
+                           match id by tour); false DUPLICATE_RANK (fixed: key by tour+asOf)
+root_cause:                resolved
+attempts:                  2 (both resolved first pass)
+next_action:               commit → PR → CI → merge → post-merge validation
+
+REAL coverage (computed): ATP players 6 · WTA players 7 · ATP matches 7 · WTA
+matches 5 · ranking observations 12 · matches with serve stats 11 · without 1 ·
+years 2023–2024 · parse failures 0.
+```
