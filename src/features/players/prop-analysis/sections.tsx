@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { formatMetric, formatDelta, pctStr } from "./format";
 import type {
   VmMetric, VmHistoricalHitRate, VmScientific, VmDecision, VmConditions, VmMatchup, VmPitchType,
+  VmPercentileRow, VmOpponentContext, VmSplit,
 } from "@/lib/players/prop-analysis/types";
 
 /* ------------------------------ header metrics ---------------------------- */
@@ -99,7 +100,7 @@ export function ModelBlock({ sci }: { sci: VmScientific | null }) {
             label={`Calibrated P(${sideLabel})`}
             value={calSel === null ? "Unavailable" : pctStr(calSel)}
             tone={calSel === null ? "muted" : undefined}
-            hint={calSel === null ? "no fit" : sci.calibrationVersion}
+            hint={calSel === null ? "no fit" : sci.calibrationVersion ?? undefined}
           />
           <Stat label={`Baseline P(${sideLabel})`} value={sci.baselineProbability === null ? "—" : pctStr(sci.baselineProbability)} />
           <Stat
@@ -108,23 +109,32 @@ export function ModelBlock({ sci }: { sci: VmScientific | null }) {
             tone={sci.modelAdvantagePp === null ? "muted" : sci.modelAdvantagePp > 0 ? "good" : "bad"}
             hint={sci.modelAdvantagePp === null ? "needs calibration" : undefined}
           />
+          <Stat label="Policy Threshold" value={`${sci.policyThresholdPct}%`} tone="muted" />
         </div>
         <div>
           <Stat label="Projection" value={`${sci.projection.mean}`} />
           <Stat label="Median" value={`${sci.projection.median}`} />
+          {sci.projection.iqr && <Stat label="P25–P75" value={`${sci.projection.iqr[0]}–${sci.projection.iqr[1]}`} />}
           <Stat label={sci.projection.bandLabel} value={`${sci.projection.band[0]}–${sci.projection.band[1]}`} />
-          <Stat label="Uncertainty (±95%)" value={sci.uncertaintyHalfWidth95 === null ? "—" : `±${(sci.uncertaintyHalfWidth95 * 100).toFixed(1)}pp`} />
+          <Stat label="Uncertainty (±95%)" value={sci.uncertaintyHalfWidth95 === null ? "—" : `±${(sci.uncertaintyHalfWidth95 * 100).toFixed(1)}pp`} hint="sampling" />
+          <Stat label="Assumption swing" value={sci.modelInputUncertainty === null ? "—" : `±${(sci.modelInputUncertainty * 100).toFixed(1)}pp`} hint="fragility" />
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <Chip label="Data Quality" value={`${sci.dataQuality}/100`} />
+        <Chip label="Volatility" value={`${sci.volatility}/100`} />
         <Chip label="Fragility" value={sci.fragilityLevel ?? "—"} tone={sci.fragilityLevel === "LOW" ? "good" : sci.fragilityLevel === "HIGH" || sci.fragilityLevel === "EXTREME" ? "bad" : "neutral"} />
         <Chip label="Training" value={sci.trainingSupport} />
-        <Chip label="Model" value={sci.modelLifecycle} />
+        <Chip label="Lifecycle" value={sci.modelLifecycle} />
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-muted-2">
+        <span>model {sci.modelVersion}</span><span>·</span>
+        <span>features {sci.featureVersion}</span><span>·</span>
+        <span>calibration {sci.calibrationVersion ?? "none"}</span>
       </div>
       <p className="mt-2 flex items-start gap-1 text-[10px] leading-relaxed text-muted-2">
         <Info className="mt-px h-3 w-3 shrink-0" />
-        Data Quality is input completeness, not a probability. Calibrated probability is shown only when a fit exists; raw is never relabeled as calibrated.
+        Probability, Data Quality (completeness), Calibration, Uncertainty (sampling), Fragility (assumption swing) and Support are kept separate — never compressed into one score. Calibrated is shown only when a fit exists; raw is never relabeled.
       </p>
     </SectionCard>
   );
@@ -155,8 +165,9 @@ const DECISION_TONE: Record<VmDecision["status"], { label: string; cls: string }
   NO_ACTIVE_LINE: { label: "No Active Line", cls: "border-border bg-surface-2 text-muted" },
 };
 
-export function DecisionBlock({ decision }: { decision: VmDecision }) {
+export function DecisionBlock({ decision, sci }: { decision: VmDecision; sci: VmScientific | null }) {
   const tone = DECISION_TONE[decision.status];
+  const calSel = sci ? (sci.side === "more" ? sci.calibratedProbabilityMore : sci.calibratedProbabilityLess) : null;
   return (
     <SectionCard title="Scientific Decision" icon={<ShieldCheck className="h-4 w-4 text-brand-500" />}>
       <div className={cn("inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-bold", tone.cls)}>
@@ -169,13 +180,27 @@ export function DecisionBlock({ decision }: { decision: VmDecision }) {
             : "Not a canonical BET verdict."}
         </p>
       )}
+
+      {/* Fact strip — the scientific basis of the verdict. */}
+      {sci && (
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+          <Fact label="Calibrated P" value={calSel === null ? "Unavailable" : pctStr(calSel)} />
+          <Fact label="Threshold" value={`${sci.policyThresholdPct}%`} />
+          <Fact label="Advantage" value={sci.modelAdvantagePp === null ? "N/A" : `${sci.modelAdvantagePp > 0 ? "+" : ""}${sci.modelAdvantagePp} pp`} />
+          <Fact label="Fragility" value={sci.fragilityLevel ?? "—"} />
+          <Fact label="Data Quality" value={`${sci.dataQuality}/100`} />
+          <Fact label="Lifecycle" value={sci.modelLifecycle} />
+          <Fact label="Training" value={sci.trainingSupport} />
+        </div>
+      )}
+
       {decision.reasons.length > 0 && (
         <div className="mt-3">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Reasons</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--positive)]">Positive Evidence</div>
           <ul className="mt-1 space-y-0.5">
             {decision.reasons.map((r, i) => (
               <li key={i} className="flex items-start gap-1.5 text-xs text-text-secondary">
-                <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-muted" />{r}
+                <span className="mt-1 text-[var(--positive)]">+</span>{r}
               </li>
             ))}
           </ul>
@@ -184,18 +209,31 @@ export function DecisionBlock({ decision }: { decision: VmDecision }) {
       {decision.risks.length > 0 && (
         <div className="mt-3">
           <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--warning)]">
-            <CircleAlert className="h-3 w-3" /> Risks
+            <CircleAlert className="h-3 w-3" /> Blockers / Risks
           </div>
           <ul className="mt-1 space-y-0.5">
             {decision.risks.map((r, i) => (
               <li key={i} className="flex items-start gap-1.5 text-xs text-muted">
-                <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-[var(--warning)]" />{r}
+                <span className="mt-0.5 text-[var(--warning)]">−</span>{r}
               </li>
             ))}
           </ul>
         </div>
       )}
+      <div className="mt-3 rounded-lg border border-border bg-surface-2 px-2.5 py-2">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-2">Next Review</div>
+        <div className="text-xs text-text-secondary">{decision.nextReview}</div>
+      </div>
     </SectionCard>
+  );
+}
+
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-2">{label}</div>
+      <div className="text-xs font-semibold tabular-nums">{value}</div>
+    </div>
   );
 }
 
@@ -217,6 +255,9 @@ export function ConditionsRow({ conditions }: { conditions: VmConditions | null 
       </span>
       <span className="text-muted">
         Weather: {conditions.weatherAvailable ? `${conditions.temperatureF}°F · ${conditions.windDescription}` : <span className="text-muted-2">unavailable</span>}
+      </span>
+      <span className="text-muted">
+        Roof: {conditions.roof === "unavailable" ? <span className="text-muted-2">unavailable</span> : <span className="capitalize">{conditions.roof}</span>}
       </span>
       <span className="flex items-center gap-2">
         <Park label="HR" v={pf.hr} />
@@ -250,7 +291,7 @@ function Park({ label, v }: { label: string; v: number | null }) {
 
 /* ------------------------- percentile matchup ----------------------------- */
 
-export function MatchupPercentiles({ matchup, playerLabel, opponentLabel }: { matchup: VmMatchup; playerLabel: string; opponentLabel: string }) {
+export function MatchupPercentiles({ matchup }: { matchup: VmMatchup }) {
   if (!matchup.available) {
     return (
       <SectionCard title="Percentile Matchup">
@@ -259,17 +300,21 @@ export function MatchupPercentiles({ matchup, playerLabel, opponentLabel }: { ma
     );
   }
   return (
-    <SectionCard title="Percentile Matchup" right={<span className="text-[10px] text-muted-2">Pitcher edge ← → Batter edge</span>}>
-      <div className="mb-2 flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-muted">
-        <span>{playerLabel}</span>
-        <span>{opponentLabel}</span>
+    <SectionCard title="Percentile Matchup" right={<span className="text-[10px] text-muted-2">Player edge ← → Opponent edge</span>}>
+      <div className="mb-2 grid grid-cols-[minmax(0,1fr)_120px_minmax(0,1fr)] items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
+        <span className="text-right">{matchup.leftLabel}</span>
+        <span className="text-center text-muted-2">Advantage</span>
+        <span>{matchup.rightLabel}</span>
       </div>
-      <div className="space-y-1">
+      <div className="space-y-1.5">
         {matchup.rows.map((r) => (
-          <div key={r.metric} className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 text-xs">
-            <span className="text-right tabular-nums">{r.playerValue === null ? "—" : fmtVal(r.playerValue)}</span>
-            <span className="w-16 text-center text-[10px] font-medium uppercase tracking-wider text-muted-2">{r.label}</span>
-            <span className="tabular-nums">{r.opponentValue === null ? "—" : fmtVal(r.opponentValue)}</span>
+          <div key={r.metric} className="grid grid-cols-[minmax(0,1fr)_120px_minmax(0,1fr)] items-center gap-2 text-xs">
+            <SideCell value={r.playerValue} pct={r.playerPercentile} align="right" />
+            <div className="flex flex-col items-center">
+              <span className="text-[10px] font-medium uppercase tracking-wider text-muted-2">{r.label}</span>
+              <EdgeBar edge={r.edge} />
+            </div>
+            <SideCell value={r.opponentValue} pct={r.opponentPercentile} align="left" />
           </div>
         ))}
       </div>
@@ -278,9 +323,110 @@ export function MatchupPercentiles({ matchup, playerLabel, opponentLabel }: { ma
   );
 }
 
+function SideCell({ value, pct, align }: { value: number | null; pct: number | null; align: "left" | "right" }) {
+  return (
+    <div className={cn("flex items-center gap-1.5", align === "right" ? "justify-end" : "justify-start")}>
+      {align === "left" && <PctBadge pct={pct} />}
+      <span className="tabular-nums">{value === null ? "—" : fmtVal(value)}</span>
+      {align === "right" && <PctBadge pct={pct} />}
+    </div>
+  );
+}
+
+function PctBadge({ pct }: { pct: number | null }) {
+  if (pct === null) return <span className="rounded bg-surface-2 px-1 text-[9px] text-muted-2">N/A</span>;
+  const tone = pct >= 70 ? "text-[var(--positive)]" : pct <= 30 ? "text-[var(--negative)]" : "text-muted";
+  return <span className={cn("rounded bg-surface-2 px-1 text-[9px] font-semibold tabular-nums", tone)}>{pct}</span>;
+}
+
+function EdgeBar({ edge }: { edge: VmPercentileRow["edge"] }) {
+  // Player = left, opponent = right. Note: "pitcher"/"batter" map to whichever
+  // side is the analyzed player; the container passes perspective via labels.
+  return (
+    <div className="mt-0.5 flex h-1.5 w-full overflow-hidden rounded-full bg-surface-2">
+      <span className={cn("h-full flex-1", edge === "pitcher" ? "bg-brand-500" : "bg-transparent")} />
+      <span className={cn("h-full w-3", edge === "neutral" ? "bg-muted-2" : "bg-transparent")} />
+      <span className={cn("h-full flex-1", edge === "batter" ? "bg-[var(--positive)]" : "bg-transparent")} />
+    </div>
+  );
+}
+
 function fmtVal(v: number): string {
   if (v > 0 && v < 1) return v.toFixed(3);
   return v.toFixed(v >= 100 ? 0 : 1);
+}
+
+/* ------------------------- opponent context ------------------------------- */
+
+export function OpponentContextSection({ opponent }: { opponent: VmOpponentContext }) {
+  if (opponent.kind === "unavailable") {
+    return (
+      <SectionCard title="Opponent Context">
+        <p className="text-sm text-muted">{opponent.note ?? "Opponent context unavailable."}</p>
+      </SectionCard>
+    );
+  }
+  const statusChip = (label: string, status: string) => (
+    <span className={cn(
+      "rounded-md border px-1.5 py-0.5 text-[10px] font-medium",
+      status === "confirmed" ? "border-[var(--positive)]/30 text-[var(--positive)]"
+        : status === "projected" ? "border-[var(--warning)]/30 text-[var(--warning)]" : "border-border text-muted-2",
+    )}>{label}: {status}</span>
+  );
+  return (
+    <SectionCard title="Opponent Context" right={<span className="text-[10px] text-muted-2">{opponent.team}</span>}>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        {opponent.kind === "starter" && opponent.starterName && (
+          <span className="text-sm font-semibold">{opponent.starterName}{opponent.starterHand ? ` · ${opponent.starterHand}HP` : ""}</span>
+        )}
+        {opponent.kind === "lineup" && <span className="text-sm font-semibold">Opposing lineup (aggregate)</span>}
+        {opponent.kind === "starter" && opponent.starterStatus && statusChip("Starter", opponent.starterStatus)}
+        {statusChip("Lineup", opponent.lineupStatus)}
+      </div>
+      {opponent.metrics.length > 0 ? (
+        <div className="flex flex-wrap gap-x-5 gap-y-2">
+          {opponent.metrics.map((m) => (
+            <div key={m.key}>
+              <div className="text-[10px] uppercase tracking-wider text-muted-2">{m.label}</div>
+              <div className="text-sm font-bold tabular-nums">{formatMetric(m)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-2">{opponent.note ?? "Statcast profile unavailable."}</p>
+      )}
+    </SectionCard>
+  );
+}
+
+/* ------------------------------- splits ----------------------------------- */
+
+export function SplitsSection({ splits }: { splits: VmSplit[] }) {
+  if (splits.length === 0) return null;
+  return (
+    <SectionCard title="Splits" right={<span className="text-[10px] text-muted-2">Situational</span>}>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {splits.map((s) => (
+          <div key={s.key} className="rounded-lg border border-border bg-surface-2 px-3 py-2">
+            <div className="mb-1 flex items-center justify-between">
+              <span className="text-xs font-semibold">{s.label}</span>
+              <span className="text-[10px] text-muted-2">
+                {s.sampleSize === null ? "sample N/A" : `${s.sampleSize} AB`}
+                {s.smallSample && <span className="ml-1 rounded bg-[var(--warning)]/15 px-1 text-[var(--warning)]">SAMPLE LIMITED</span>}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1">
+              {s.metrics.map((m) => (
+                <span key={m.key} className="text-[11px] text-muted">
+                  {m.label} <span className="font-semibold tabular-nums text-foreground">{formatMetric(m)}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </SectionCard>
+  );
 }
 
 /* ------------------------------ pitch type -------------------------------- */
@@ -299,6 +445,7 @@ export function PitchTypeTable({ pitchTypes }: { pitchTypes: VmPitchType[] }) {
               <th className="pb-1.5 text-right font-semibold">BA</th>
               <th className="pb-1.5 text-right font-semibold">SLG</th>
               <th className="pb-1.5 text-right font-semibold">xwOBA</th>
+              <th className="pb-1.5 text-right font-semibold">Matchup</th>
             </tr>
           </thead>
           <tbody className="tabular-nums">
@@ -310,13 +457,25 @@ export function PitchTypeTable({ pitchTypes }: { pitchTypes: VmPitchType[] }) {
                 <td className="py-1.5 text-right">{p.baAllowed === null ? "—" : p.baAllowed.toFixed(3)}</td>
                 <td className="py-1.5 text-right">{p.slgAllowed === null ? "—" : p.slgAllowed.toFixed(3)}</td>
                 <td className="py-1.5 text-right">{p.xwobaAllowed === null ? "—" : p.xwobaAllowed.toFixed(3)}</td>
+                <td className="py-1.5 text-right"><PitchEdge edge={p.edge} /></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="mt-2 text-[10px] text-muted-2">Matchup indicator derived from pitch whiff% and xwOBA-allowed vs league norms. Insufficient data → N/A.</p>
     </SectionCard>
   );
+}
+
+function PitchEdge({ edge }: { edge: VmPitchType["edge"] }) {
+  if (edge === null) return <span className="text-muted-2">N/A</span>;
+  const map = {
+    pitcher: { t: "Pitcher edge", c: "text-brand-500" },
+    batter: { t: "Batter edge", c: "text-[var(--positive)]" },
+    neutral: { t: "Neutral", c: "text-muted" },
+  } as const;
+  return <span className={cn("font-medium", map[edge].c)}>{map[edge].t}</span>;
 }
 
 /* ------------------------------ section card ------------------------------ */

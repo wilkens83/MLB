@@ -59,6 +59,7 @@ export interface OpponentContext {
   pitcherHand?: string;
   venueName?: string;
   opponentTeam?: string;
+  opponentTeamId?: number;
   gamePk?: number;
   lineupConfirmed: boolean;
   starterConfirmed: boolean;
@@ -102,6 +103,7 @@ async function resolveOpponent(teamId: number | undefined): Promise<OpponentCont
       pitcherName: opp.probablePitcherName,
       venueName: g.venueName,
       opponentTeam: opp.teamName,
+      opponentTeamId: opp.teamId,
       gamePk: g.gamePk,
       lineupConfirmed: false, // MLB confirms lineups ~1-2h pregame; treated as projected here
       starterConfirmed: opp.probablePitcherId !== undefined,

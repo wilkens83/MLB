@@ -70,6 +70,8 @@ export interface VmProjection {
   /** central band [low, high] and the interval label (e.g. "P10–P90"). */
   band: [number, number];
   bandLabel: string;
+  /** interquartile projection [p25, p75] in prop units, when derivable. */
+  iqr: [number, number] | null;
 }
 
 export interface VmScientific {
@@ -79,13 +81,15 @@ export interface VmScientific {
   calibratedProbabilityMore: number | null;
   calibratedProbabilityLess: number | null;
   calibrationAvailable: boolean;
-  calibrationVersion?: string;
   baselineProbability: number | null;
   /** calibrated selected − baseline, in percentage points; null when either missing. */
   modelAdvantagePp: number | null;
+  /** policy minimum selected-side probability the decision engine requires. */
+  policyThresholdPct: number;
   side: "more" | "less";
   projection: VmProjection;
   dataQuality: number; // 0..100 (completeness/quality, NOT confidence-as-probability)
+  volatility: number; // 0..100 (spread of the projection distribution)
   fragilityScore: number | null;
   fragilityLevel: "LOW" | "MODERATE" | "HIGH" | "EXTREME" | null;
   uncertaintyHalfWidth95: number | null; // Monte-Carlo sampling noise
@@ -93,12 +97,16 @@ export interface VmScientific {
   trainingSupport: "IN-DISTRIBUTION" | "OUTSIDE-SUPPORT" | "UNKNOWN";
   modelLifecycle: string; // e.g. RESEARCH_ONLY / VALIDATED / PRODUCTION
   modelVersion: string;
+  featureVersion: string;
+  calibrationVersion: string | null;
 }
 
 export interface VmDecision {
   status: "QUALIFIED_MORE" | "QUALIFIED_LESS" | "WATCH" | "NO_PLAY" | "UNAVAILABLE" | "NO_ACTIVE_LINE";
   reasons: string[];
   risks: string[];
+  /** What would change the verdict — always actionable, never a generic lean. */
+  nextReview: string;
   /** True only when a persisted/validated line drove a canonical assessment. */
   fromCanonicalAssessment: boolean;
 }
@@ -116,7 +124,9 @@ export interface VmConditions {
   weatherAvailable: boolean;
   temperatureF?: number;
   windDescription?: string;
-  roof?: string;
+  humidityPct?: number;
+  /** Roof status — "unavailable" when the feed does not report it (never assumed open). */
+  roof: "open" | "closed" | "retractable" | "unavailable";
   park: { runs: number | null; hr: number | null; hits: number | null };
   classification?: "Hitter Friendly" | "Pitcher Friendly" | "Neutral";
 }
@@ -138,6 +148,22 @@ export interface VmMatchup {
   /** reference population size behind the percentiles; null when insufficient. */
   referenceSize: number | null;
   rows: VmPercentileRow[];
+  /** Left/right column labels (analyzed player vs opponent). */
+  leftLabel: string;
+  rightLabel: string;
+  note?: string;
+}
+
+/** Opponent context — the opposing lineup (pitcher prop) or starter (hitter prop). */
+export interface VmOpponentContext {
+  kind: "lineup" | "starter" | "unavailable";
+  team?: string;
+  lineupStatus: "confirmed" | "projected" | "unavailable";
+  starterName?: string;
+  starterHand?: string;
+  starterStatus?: "confirmed" | "projected" | "unavailable";
+  /** Compact metric readouts (already-percent values), unavailable → null. */
+  metrics: VmMetric[];
   note?: string;
 }
 
@@ -145,6 +171,7 @@ export interface VmSplit {
   key: string;
   label: string;
   sampleSize: number | null;
+  /** True when the split sample is too thin to trust — surfaced as SAMPLE LIMITED. */
   smallSample: boolean;
   metrics: VmMetric[];
 }
@@ -158,6 +185,8 @@ export interface VmPitchType {
   baAllowed: number | null;
   slgAllowed: number | null;
   xwobaAllowed: number | null;
+  /** Matchup indicator derived from whiff/xwOBA vs league — null when unknown. */
+  edge: "pitcher" | "neutral" | "batter" | null;
 }
 
 export interface VmProvenance {
@@ -183,6 +212,7 @@ export interface PlayerPropAnalysisViewModel {
   scientific: VmScientific | null;
   decision: VmDecision;
   conditions: VmConditions | null;
+  opponent: VmOpponentContext;
   matchup: VmMatchup;
   splits: VmSplit[];
   pitchTypes: VmPitchType[];
