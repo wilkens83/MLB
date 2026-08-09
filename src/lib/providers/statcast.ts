@@ -152,6 +152,34 @@ export function clearStatcastCache() {
   pitcherIndexCache.clear();
 }
 
+/**
+ * The full season reference POPULATION of every qualified batter — one Savant
+ * leaderboard request, cached. Used to compute real percentile ranks (never a
+ * fabricated percentile). Returns [] when the leaderboard is unavailable.
+ */
+export async function getBatterPopulation(season = getCurrentMlbSeason()): Promise<StatcastBatter[]> {
+  try {
+    let idxP = batterIndexCache.get(season);
+    if (!idxP) { idxP = buildBatterIndex(season); batterIndexCache.set(season, idxP); }
+    return [...(await idxP).byId.values()];
+  } catch {
+    batterIndexCache.delete(season);
+    return [];
+  }
+}
+
+/** The full season reference POPULATION of every qualified pitcher. */
+export async function getPitcherPopulation(season = getCurrentMlbSeason()): Promise<StatcastPitcher[]> {
+  try {
+    let idxP = pitcherIndexCache.get(season);
+    if (!idxP) { idxP = buildPitcherIndex(season); pitcherIndexCache.set(season, idxP); }
+    return [...(await idxP).byId.values()];
+  } catch {
+    pitcherIndexCache.delete(season);
+    return [];
+  }
+}
+
 export const savantStatcastProvider: StatcastProvider = {
   name: SAVANT_PROVIDER,
 

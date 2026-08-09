@@ -25,7 +25,7 @@ import { PerformanceChart } from "./performance-chart";
 import { timeAgo } from "./format";
 import {
   HeaderMetrics, HitRateWindows, ModelBlock, DecisionBlock, ConditionsRow,
-  MatchupPercentiles, PitchTypeTable, SectionCard,
+  MatchupPercentiles, PitchTypeTable, OpponentContextSection, SplitsSection, SectionCard,
 } from "./sections";
 
 const WINDOWS = [5, 10, 20, 30];
@@ -143,14 +143,14 @@ export function PropAnalysisView({
           {/* Matchup header */}
           {vm && vm.player && <MatchupHeader vm={vm} teamId={initialTeamId} />}
 
+          {/* Opponent context */}
+          {vm && <OpponentContextSection opponent={vm.opponent} />}
+
           {/* Percentile matchup */}
-          {vm && (
-            <MatchupPercentiles
-              matchup={vm.matchup}
-              playerLabel={vm.player?.name ?? "Player"}
-              opponentLabel={vm.game?.opponentTeam ?? "Opponent"}
-            />
-          )}
+          {vm && <MatchupPercentiles matchup={vm.matchup} />}
+
+          {/* Splits */}
+          {vm && <SplitsSection splits={vm.splits} />}
 
           {/* Pitch type */}
           {vm && <PitchTypeTable pitchTypes={vm.pitchTypes} />}
@@ -158,7 +158,7 @@ export function PropAnalysisView({
           {/* Model + decision */}
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {vm ? <ModelBlock sci={vm.scientific} /> : <Skeleton className="h-64 w-full" />}
-            {vm ? <DecisionBlock decision={vm.decision} /> : <Skeleton className="h-64 w-full" />}
+            {vm ? <DecisionBlock decision={vm.decision} sci={vm.scientific} /> : <Skeleton className="h-64 w-full" />}
           </div>
 
           {/* Provenance */}

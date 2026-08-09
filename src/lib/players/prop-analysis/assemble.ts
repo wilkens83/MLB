@@ -21,14 +21,19 @@ import { unavailableCalibration } from "@/lib/prizepicks/opportunity/calibration
 import { predictionUncertainty } from "@/lib/prizepicks/opportunity/uncertainty";
 import { summarizeFragility, type ScenarioProbability } from "@/lib/prizepicks/opportunity/fragility";
 import { assessOpportunity } from "@/lib/prizepicks/opportunity/engine";
+import { DEFAULT_DECISION_POLICY } from "@/lib/prizepicks/decision/policy";
 import { staticParkProvider } from "@/lib/providers/park";
 import { getPitcherArsenal } from "@/lib/providers/arsenal";
+import { getBatterPopulation, getPitcherPopulation, savantStatcastProvider } from "@/lib/providers/statcast";
+import { getProjectedLineup, getPlayerSplits, type PlayerSplit } from "@/lib/mlb/api";
 import type { StatcastBatter, StatcastPitcher } from "@/lib/domain/models";
 import { getMarketConfig, type MarketAnalysisConfig } from "./market-config";
 import { labelForCode } from "./reason-labels";
+import { buildPercentileRows, aggregateLineupProfile } from "./percentiles";
 import type {
   PlayerPropAnalysisViewModel, VmHistoryPoint, VmHistoricalHitRate, VmMetric,
-  VmScientific, VmDecision, VmConditions, VmMatchup, VmPercentileRow, VmPitchType, VmProvenance,
+  VmScientific, VmDecision, VmConditions, VmMatchup, VmPitchType, VmProvenance,
+  VmOpponentContext, VmSplit,
 } from "./types";
 
 export interface PropAnalysisRequest {
@@ -178,8 +183,12 @@ export function buildScientific(payload: AnalysisPayload, line: number): VmScien
     dataCompleteness: (payload.dataQuality?.score ?? 0) / 100,
   });
 
-  // Projection band from the simulation CI (labeled honestly, not P25–P75).
+  // Projection band from the simulation CI (P10–P90) + the interquartile band
+  // (P25–P75) derived from the discrete distribution when available.
   const band: [number, number] = sim.ci80;
+  const iqr = quantilesFromDistribution(sim.distribution, [0.25, 0.75]);
+  // Volatility = coefficient of variation of the projection, scaled to 0..100.
+  const volatility = sim.mean > 0 ? Math.min(100, Math.round((sim.stdDev / sim.mean) * 100)) : 0;
 
   return {
     rawProbabilityMore: round(rawMore, 3),
@@ -187,17 +196,19 @@ export function buildScientific(payload: AnalysisPayload, line: number): VmScien
     calibratedProbabilityMore: calMore,
     calibratedProbabilityLess: calLess,
     calibrationAvailable: cal.available,
-    calibrationVersion: cal.available ? cal.version : undefined,
     baselineProbability: baselineProb !== null ? round(baselineProb, 3) : null,
     modelAdvantagePp,
+    policyThresholdPct: round(DEFAULT_DECISION_POLICY.minimumSelectedSideProbability * 100, 0),
     side,
     projection: {
       mean: round(sim.mean, 1),
       median: round(sim.median, 1),
       band: [round(band[0], 1), round(band[1], 1)],
       bandLabel: "P10–P90",
+      iqr: iqr ? [round(iqr[0], 0), round(iqr[1], 0)] : null,
     },
     dataQuality: payload.dataQuality?.score ?? 0,
+    volatility,
     fragilityScore: frag ? Math.round(frag.fragilityScore) : null,
     fragilityLevel: frag?.fragilityLevel ?? null,
     uncertaintyHalfWidth95: unc.monteCarloHalfWidth95,
@@ -205,12 +216,36 @@ export function buildScientific(payload: AnalysisPayload, line: number): VmScien
     trainingSupport: (payload.samples.length >= 5 ? "IN-DISTRIBUTION" : "UNKNOWN"),
     modelLifecycle: "RESEARCH_ONLY",
     modelVersion: MODEL_VERSION,
+    featureVersion: "live",
+    calibrationVersion: cal.available ? cal.version : null,
   };
+}
+
+/** Interpolate quantiles from a discrete probability distribution (or null). */
+function quantilesFromDistribution(
+  dist: { value: number; probability: number }[],
+  qs: number[],
+): number[] | null {
+  if (dist.length === 0) return null;
+  const sorted = [...dist].sort((a, b) => a.value - b.value);
+  const total = sorted.reduce((s, d) => s + d.probability, 0);
+  if (total <= 0) return null;
+  const out: number[] = [];
+  for (const q of qs) {
+    let cum = 0;
+    let picked = sorted[sorted.length - 1].value;
+    for (const d of sorted) {
+      cum += d.probability / total;
+      if (cum >= q) { picked = d.value; break; }
+    }
+    out.push(picked);
+  }
+  return out;
 }
 
 /* ------------------------------- decision --------------------------------- */
 
-function buildDecision(
+export function buildDecision(
   payload: AnalysisPayload,
   sci: VmScientific | null,
   line: number,
@@ -219,14 +254,21 @@ function buildDecision(
   if (!hasActiveLine) {
     return {
       status: "NO_ACTIVE_LINE",
-      reasons: ["No confirmed PrizePicks/market line — research analysis only."],
+      reasons: ["Research analysis only — the projection stands, but no market verdict is issued without a line."],
       risks: [],
+      nextReview: "Re-evaluate when a PrizePicks/market line is captured for this player + market.",
       fromCanonicalAssessment: false,
     };
   }
   const a = payload.analysis;
   if (!a || !sci) {
-    return { status: "UNAVAILABLE", reasons: ["Projection unavailable."], risks: [], fromCanonicalAssessment: false };
+    return {
+      status: "UNAVAILABLE",
+      reasons: [],
+      risks: ["Projection unavailable — insufficient data to assess."],
+      nextReview: "Re-evaluate when a game log and projection are available.",
+      fromCanonicalAssessment: false,
+    };
   }
 
   const opp = payload.opponent;
@@ -273,17 +315,52 @@ function buildDecision(
     featureVersion: "live",
   });
 
-  const reasons = assessment.reasonCodes.map(labelForCode);
-  const risks = [
+  const policy = DEFAULT_DECISION_POLICY;
+  const isBatter = a.prop.category === "batter";
+  const selectedCal = sci.side === "more" ? sci.calibratedProbabilityMore : sci.calibratedProbabilityLess;
+
+  // POSITIVE EVIDENCE — derived from the real facts, only when actually true.
+  const positive: string[] = [];
+  if (selectedCal !== null && selectedCal >= policy.minimumSelectedSideProbability)
+    positive.push(`Calibrated P(${sci.side}) clears the ${sci.policyThresholdPct}% policy threshold`);
+  if (sci.modelAdvantagePp !== null && sci.modelAdvantagePp > 0)
+    positive.push(`Beats the independent baseline by +${sci.modelAdvantagePp} pp`);
+  if (sci.fragilityLevel === "LOW") positive.push("Low fragility under plausible assumptions");
+  if (sci.dataQuality >= policy.minimumDataQuality) positive.push(`Data quality ${sci.dataQuality}/100 meets the floor`);
+  if (isBatter && opp?.lineupConfirmed) positive.push("Lineup confirmed");
+  if (opp?.starterConfirmed) positive.push("Opposing starter confirmed");
+
+  // BLOCKERS / RISKS — the canonical vetoes + reason codes + warnings.
+  const blockers = [
     ...assessment.scientificVetoes.map((v) => v.message),
+    ...assessment.reasonCodes.filter((c) => c !== "OPPORTUNITY_QUALIFIED").map(labelForCode),
     ...payload.warnings.filter((w) => w.severity !== "info").map((w) => w.message),
   ];
+
   return {
     status: assessment.status,
-    reasons: [...new Set(reasons)].slice(0, 6),
-    risks: [...new Set(risks)].slice(0, 6),
+    reasons: [...new Set(positive)].slice(0, 6),
+    risks: [...new Set(blockers)].slice(0, 6),
+    nextReview: nextReviewCondition(assessment.reasonCodes, sci, opp, isBatter),
     fromCanonicalAssessment: true,
   };
+}
+
+/** The single most actionable condition that would change the verdict. */
+function nextReviewCondition(
+  codes: string[],
+  sci: VmScientific,
+  opp: AnalysisPayload["opponent"],
+  isBatter: boolean,
+): string {
+  if (!sci.calibrationAvailable) return "Re-evaluate when a fitted calibration is available for this market/model version.";
+  if (codes.some((c) => c.includes("VALIDAT") || c.includes("MARKET_NOT")) || sci.modelLifecycle === "RESEARCH_ONLY")
+    return "Re-evaluate when the market model reaches a BET-eligible lifecycle state.";
+  if (isBatter && !opp?.lineupConfirmed) return "Re-evaluate when the lineup is confirmed.";
+  if (!opp?.starterConfirmed) return "Re-evaluate when the opposing starter is confirmed.";
+  if (sci.fragilityLevel === "HIGH" || sci.fragilityLevel === "EXTREME")
+    return "Re-evaluate after more games reduce projection fragility.";
+  return "Re-evaluate when a fresh PrizePicks/market line is captured.";
 }
 
 /* ------------------------------ conditions -------------------------------- */
@@ -296,9 +373,11 @@ function buildConditions(payload: AnalysisPayload): VmConditions | null {
   const classification: VmConditions["classification"] = !hasFactors
     ? "Neutral"
     : pf.runs > 1.02 ? "Hitter Friendly" : pf.runs < 0.98 ? "Pitcher Friendly" : "Neutral";
+  const roof = venueRoof(opp.venueName);
   return {
     venueName: opp.venueName,
     weatherAvailable: false, // no wired weather feed → reported unavailable, not neutral
+    roof,
     park: {
       runs: hasFactors ? pf.runs : null,
       hr: hasFactors ? pf.hr : null,
@@ -308,43 +387,159 @@ function buildConditions(payload: AnalysisPayload): VmConditions | null {
   };
 }
 
-/* ------------------------------- matchup ---------------------------------- */
-
-const PCT_METRIC_LABELS: Record<string, string> = {
-  battingAvg: "BA", bbPct: "BB%", kPct: "K%", whiffPct: "Whiff%", xwoba: "xwOBA",
-  barrelPct: "Barrel%", hardHitPct: "HardHit%", barrelPctAllowed: "Barrel%", hardHitPctAllowed: "HardHit%",
-};
-
-function statVal(sc: StatcastBatter | StatcastPitcher | null | undefined, key: string): number | null {
-  if (!sc) return null;
-  const v = (sc as unknown as Record<string, number | undefined>)[key];
-  return v ?? null;
+// Known fixed/retractable roofs (static; anything else → "unavailable", never assumed open).
+const CLOSED_ROOFS = ["tropicana", "rogers centre", "chase field", "minute maid", "globe life", "loandepot", "american family", "t-mobile"];
+function venueRoof(venue: string): VmConditions["roof"] {
+  const v = venue.toLowerCase();
+  return CLOSED_ROOFS.some((r) => v.includes(r)) ? "retractable" : "unavailable";
 }
 
-export function buildMatchup(payload: AnalysisPayload, config: MarketAnalysisConfig): VmMatchup {
-  const player = config.playerType === "pitcher" ? payload.statcast.pitcher : payload.statcast.batter;
-  const opponent = config.playerType === "pitcher" ? payload.statcast.batter : payload.statcast.pitcher;
-  // For pitcher markets the "opponent" batter profile is the opposing lineup —
-  // not modeled here as a single row, so we show the pitcher's own row + note.
-  if (!player) {
-    return { available: false, referenceSize: null, rows: [], note: "Statcast profile unavailable for this player." };
+/* ------------------------------- matchup ---------------------------------- */
+
+/**
+ * Percentile matchup with REAL percentile ranks from the season Statcast
+ * population. For a hitter prop it is batter (player) vs opposing starter; for a
+ * pitcher prop it is pitcher (player) vs the opposing-lineup aggregate profile.
+ */
+export async function buildMatchup(
+  payload: AnalysisPayload,
+  config: MarketAnalysisConfig,
+  season: number,
+): Promise<VmMatchup> {
+  const isPitcher = config.playerType === "pitcher";
+  const playerName = payload.player?.name ?? "Player";
+  const oppName = payload.opponent?.opponentTeam ?? (isPitcher ? "Opponent lineup" : "Opposing starter");
+  const [batterPop, pitcherPop] = await Promise.all([
+    getBatterPopulation(season),
+    getPitcherPopulation(season),
+  ]);
+
+  let batter: StatcastBatter | null;
+  let pitcher: StatcastPitcher | null;
+  if (isPitcher) {
+    pitcher = payload.statcast.pitcher ?? null;
+    batter = await opposingLineupProfile(payload, season); // aggregate lineup
+  } else {
+    batter = payload.statcast.batter ?? null;
+    pitcher = payload.statcast.pitcher ?? null; // opposing starter (already resolved)
   }
-  const rows: VmPercentileRow[] = config.matchupMetrics.map((key) => ({
-    metric: key,
-    label: PCT_METRIC_LABELS[key] ?? key,
-    playerValue: statVal(player, key),
-    // Percentiles require a reference population we do not fetch here → null (N/A).
-    playerPercentile: null,
-    opponentValue: statVal(opponent, key),
-    opponentPercentile: null,
-    edge: null,
-  })).filter((r) => r.playerValue !== null || r.opponentValue !== null);
+
+  if ((isPitcher && !pitcher) || (!isPitcher && !batter)) {
+    return {
+      available: false, referenceSize: null, rows: [],
+      leftLabel: playerName, rightLabel: oppName,
+      note: "Statcast profile unavailable for this player — percentile matchup cannot be built.",
+    };
+  }
+
+  const { rows, referenceSize } = buildPercentileRows(batter, pitcher, batterPop, pitcherPop, isPitcher ? "pitcher" : "batter");
+  const note = referenceSize === null
+    ? "Season reference population unavailable — percentile ranks marked N/A (raw values shown)."
+    : `Percentiles vs ${referenceSize} qualified players (season Statcast).`;
   return {
     available: rows.length > 0,
-    referenceSize: null,
+    referenceSize,
     rows,
-    note: "Raw Statcast values shown. Percentile ranks require a season reference population (not loaded) and are marked N/A.",
+    leftLabel: playerName,
+    rightLabel: oppName,
+    note,
   };
+}
+
+/** PA-weighted Statcast profile of the opposing team's projected lineup. */
+async function opposingLineupProfile(payload: AnalysisPayload, season: number): Promise<StatcastBatter | null> {
+  const oppTeamId = payload.opponent?.opponentTeamId;
+  if (!oppTeamId) return null;
+  const lineup = await getProjectedLineup(oppTeamId).catch(() => []);
+  if (lineup.length === 0) return null;
+  const profiles = await Promise.all(
+    lineup.slice(0, 9).map((h) => savantStatcastProvider.getBatter(h.id, season).catch(() => null)),
+  );
+  const present = profiles.filter((p): p is StatcastBatter => p !== null);
+  return aggregateLineupProfile(present);
+}
+
+/* --------------------------- opponent context ----------------------------- */
+
+async function buildOpponentContext(payload: AnalysisPayload, config: MarketAnalysisConfig, season: number): Promise<VmOpponentContext> {
+  const opp = payload.opponent;
+  if (!opp?.opponentTeam) {
+    return { kind: "unavailable", lineupStatus: "unavailable", metrics: [], note: "No resolved game — opponent context unavailable." };
+  }
+  if (config.playerType === "pitcher") {
+    // Opposing lineup aggregate profile.
+    const profile = await opposingLineupProfile(payload, season);
+    const metrics: VmMetric[] = profile
+      ? [
+          metric("kPct", "Lineup K%", profile.kPct ?? null, "pct"),
+          metric("bbPct", "Lineup BB%", profile.bbPct ?? null, "pct"),
+          metric("whiffPct", "Lineup Whiff%", profile.whiffPct ?? null, "pct"),
+          metric("xwoba", "Lineup xwOBA", profile.xwoba ?? null, "one"),
+          metric("hardHitPct", "HardHit%", profile.hardHitPct ?? null, "pct"),
+        ]
+      : [];
+    return {
+      kind: "lineup",
+      team: opp.opponentTeam,
+      lineupStatus: opp.lineupConfirmed ? "confirmed" : "projected",
+      metrics,
+      note: profile ? undefined : "Opposing-lineup Statcast profile unavailable.",
+    };
+  }
+  // Hitter prop → opposing starter.
+  const sp = payload.statcast.pitcher;
+  const metrics: VmMetric[] = sp
+    ? [
+        metric("kPct", "SP K%", sp.kPct ?? null, "pct"),
+        metric("bbPct", "SP BB%", sp.bbPct ?? null, "pct"),
+        metric("whiffPct", "SP Whiff%", sp.whiffPct ?? null, "pct"),
+        metric("xwoba", "xwOBA allowed", sp.xwoba ?? null, "one"),
+        metric("hardHitPctAllowed", "HardHit% allowed", sp.hardHitPctAllowed ?? null, "pct"),
+      ]
+    : [];
+  return {
+    kind: "starter",
+    team: opp.opponentTeam,
+    lineupStatus: opp.lineupConfirmed ? "confirmed" : "projected",
+    starterName: opp.pitcherName,
+    starterHand: opp.pitcherHand,
+    starterStatus: opp.starterConfirmed ? "confirmed" : opp.pitcherName ? "projected" : "unavailable",
+    metrics,
+    note: sp ? undefined : "Opposing-starter Statcast profile unavailable.",
+  };
+}
+
+/* ------------------------------- splits ----------------------------------- */
+
+const SMALL_SAMPLE_AB = 40;
+
+async function buildSplits(payload: AnalysisPayload, config: MarketAnalysisConfig, season: number): Promise<VmSplit[]> {
+  if (!payload.player) return [];
+  const group = config.playerType === "pitcher" ? "pitching" : "hitting";
+  const splits = await getPlayerSplits(payload.player.id, group, season).catch((): PlayerSplit[] => []);
+  // vs LHP/RHP (vl/vr) for hitters == vs LHB/RHB for pitchers.
+  const want = config.playerType === "pitcher"
+    ? [{ code: "vl", label: "vs LHB" }, { code: "vr", label: "vs RHB" }]
+    : [{ code: "vl", label: "vs LHP" }, { code: "vr", label: "vs RHP" }];
+  const out: VmSplit[] = [];
+  for (const w of want) {
+    const s = splits.find((x) => x.code === w.code);
+    if (!s) continue;
+    const ab = s.atBats ?? null;
+    out.push({
+      key: w.code,
+      label: w.label,
+      sampleSize: ab,
+      smallSample: ab !== null && ab < SMALL_SAMPLE_AB,
+      metrics: [
+        metric("avg", "AVG", s.avg ? Number(s.avg) : null, "one"),
+        metric("obp", "OBP", s.obp ? Number(s.obp) : null, "one"),
+        metric("slg", "SLG", s.slg ? Number(s.slg) : null, "one"),
+        metric("ops", "OPS", s.ops ? Number(s.ops) : null, "one"),
+      ],
+    });
+  }
+  return out;
 }
 
 /* ------------------------------ pitch types ------------------------------- */
@@ -362,7 +557,18 @@ async function buildPitchTypes(payload: AnalysisPayload, config: MarketAnalysisC
     baAllowed: p.baAllowed ?? null,
     slgAllowed: p.slgAllowed ?? null,
     xwobaAllowed: p.xwobaAllowed ?? null,
+    edge: pitchEdge(p.whiffPct, p.xwobaAllowed),
   }));
+}
+
+/** Pitch-level matchup indicator from whiff% and xwOBA-allowed vs league norms.
+    Conservative thresholds; insufficient data → null (N/A). */
+function pitchEdge(whiff: number | undefined, xwobaAllowed: number | undefined): VmPitchType["edge"] {
+  if (whiff === undefined && xwobaAllowed === undefined) return null;
+  let score = 0;
+  if (whiff !== undefined) score += whiff >= 30 ? 1 : whiff <= 18 ? -1 : 0;
+  if (xwobaAllowed !== undefined) score += xwobaAllowed <= 0.29 ? 1 : xwobaAllowed >= 0.36 ? -1 : 0;
+  return score > 0 ? "pitcher" : score < 0 ? "batter" : "neutral";
 }
 
 /* ------------------------------- assemble --------------------------------- */
@@ -404,7 +610,13 @@ export async function assemblePropAnalysis(req: PropAnalysisRequest): Promise<Pl
   }
 
   const sci = buildScientific(payload, line);
-  const [pitchTypes] = await Promise.all([buildPitchTypes(payload, config)]);
+  // Bounded fan-out of the independent enrichment loads.
+  const [pitchTypes, matchup, opponent, splits] = await Promise.all([
+    buildPitchTypes(payload, config),
+    buildMatchup(payload, config, season),
+    buildOpponentContext(payload, config, season),
+    buildSplits(payload, config, season),
+  ]);
 
   return {
     ok: true,
@@ -420,8 +632,9 @@ export async function assemblePropAnalysis(req: PropAnalysisRequest): Promise<Pl
     scientific: sci,
     decision: buildDecision(payload, sci, line, hasActiveLine),
     conditions: buildConditions(payload),
-    matchup: buildMatchup(payload, config),
-    splits: [], // populated by the splits endpoint on demand (kept lean here)
+    opponent,
+    matchup,
+    splits,
     pitchTypes,
     provenance,
     warnings: payload.warnings.map((w) => w.message),
@@ -443,6 +656,7 @@ function toVmGame(payload: AnalysisPayload): PlayerPropAnalysisViewModel["game"]
     gamePk: o.gamePk,
     venueName: o.venueName,
     opponentTeam: o.opponentTeam,
+    opponentTeamId: o.opponentTeamId,
     starterConfirmed: o.starterConfirmed,
     lineupConfirmed: o.lineupConfirmed,
   };
@@ -466,9 +680,10 @@ function emptyViewModel(
     history: [],
     historicalHitRates: [],
     scientific: null,
-    decision: { status: "UNAVAILABLE", reasons: [warning], risks: [], fromCanonicalAssessment: false },
+    decision: { status: "UNAVAILABLE", reasons: [], risks: [warning], nextReview: "Re-evaluate when data is available.", fromCanonicalAssessment: false },
     conditions: null,
-    matchup: { available: false, referenceSize: null, rows: [], note: warning },
+    opponent: { kind: "unavailable", lineupStatus: "unavailable", metrics: [], note: warning },
+    matchup: { available: false, referenceSize: null, rows: [], leftLabel: "Player", rightLabel: "Opponent", note: warning },
     splits: [],
     pitchTypes: [],
     provenance: { dataAsOf: Date.now(), modelVersion: MODEL_VERSION, sources: [], season },
