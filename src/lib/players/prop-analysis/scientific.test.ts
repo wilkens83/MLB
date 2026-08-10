@@ -4,6 +4,7 @@ import { buildPercentileRows, aggregateLineupProfile } from "./percentiles";
 import { project } from "@/lib/prediction/projection";
 import { simulate, recommend } from "@/lib/prediction/simulate";
 import { analyzeStat } from "@/lib/analytics/hitRate";
+import { computeModelEnsemble } from "@/lib/models";
 import type { AnalysisPayload, EngineAnalysis } from "@/lib/mlb/analysis";
 import { getProp } from "@/lib/props/catalog";
 import type { StatcastPitcher, StatcastBatter } from "@/lib/domain/models";
@@ -15,7 +16,11 @@ function analysisFor(propKey: string, series: number[], line: number): EngineAna
   const simulation = simulate(projWithLambda, line, { seed: "test" });
   const analytics = analyzeStat(series, line, "over");
   const recommendation = recommend({ sim: simulation, sampleSize: series.length });
-  return { prop, line, side: "over", projection: projWithLambda, simulation, analytics, recommendation, modeledBy: "marginal" };
+  const me = computeModelEnsemble({ series, family: prop.family, line, seed: "test", marginalSim: simulation, modelVersion: "test" });
+  return {
+    prop, line, side: "over", projection: projWithLambda, simulation, analytics, recommendation, modeledBy: "marginal",
+    models: me.models, ensemble: me.ensemble, modelDisagreement: me.disagreement,
+  };
 }
 
 function payloadWith(propKey: string, series: number[], line: number, opts: { pitcher?: Partial<StatcastPitcher>; batter?: Partial<StatcastBatter> } = {}): AnalysisPayload {

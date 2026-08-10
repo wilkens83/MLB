@@ -21,6 +21,8 @@ import {
   simulatePlateAppearances, PA_MODELED_PROPS,
 } from "@/lib/prediction/paSim";
 import { scoreDataQuality, buildWarnings } from "@/lib/prediction/quality";
+import { computeModelEnsemble } from "@/lib/models";
+import type { ModelOutput, EnsembleOutput, ModelDisagreement } from "@/lib/models";
 import type {
   AdjustmentBreakdown, DataQuality, PredictionProvenance, PredictionWarning,
   StatcastBatter, StatcastPitcher,
@@ -51,6 +53,10 @@ export interface EngineAnalysis {
   analytics: StatAnalytics;
   recommendation: ReturnType<typeof recommend>;
   modeledBy: "plate-appearance" | "marginal";
+  /** Parallel deterministic model outputs (additive; backward compatible). */
+  models: ModelOutput[];
+  ensemble: EnsembleOutput;
+  modelDisagreement: ModelDisagreement;
 }
 
 export interface OpponentContext {
@@ -189,8 +195,14 @@ export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload
   const finalLambda = breakdown.final;
   const projection = { ...baseProjection, lambda: finalLambda, contextMultiplier: base > 0 ? finalLambda / base : 1 };
 
-  // Choose the simulator: PA engine for batting props it models directly.
-  let simulation: SimulationResult;
+  // The marginal Monte-Carlo (Model A) is always computed — it is the baseline
+  // simulator and the reused output for the parallel-model ensemble.
+  const seed = `${player.id}:${req.propKey}:${line}`;
+  const marginalSim = simulate(projection, line, { seed });
+
+  // Choose the primary simulator: PA engine for batting props it models directly.
+  let simulation: SimulationResult = marginalSim;
+  let paSim: SimulationResult | undefined;
   let modeledBy: "plate-appearance" | "marginal" = "marginal";
   if (prop.category === "batter" && PA_MODELED_PROPS.has(req.propKey) && !req.venueSplit && !req.lastN) {
     const rates0 = estimatePaRates(log.map((sp) => ({ stat: numify(sp.stat as unknown as Record<string, unknown>) })));
@@ -200,14 +212,21 @@ export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload
     const expectedPa = expectedPasPerGame(log.map((sp) => ({ stat: numify(sp.stat as unknown as Record<string, unknown>) })));
     const results = simulatePlateAppearances(rates, { [req.propKey]: line } as Record<string, number>, {
       iterations: 10000,
-      seed: `${player.id}:${req.propKey}:${line}`,
+      seed,
       expectedPa,
     });
-    simulation = results[req.propKey] ?? simulate(projection, line, { seed: `${player.id}:${req.propKey}:${line}` });
-    if (results[req.propKey]) modeledBy = "plate-appearance";
-  } else {
-    simulation = simulate(projection, line, { seed: `${player.id}:${req.propKey}:${line}` });
+    if (results[req.propKey]) {
+      simulation = results[req.propKey];
+      paSim = results[req.propKey];
+      modeledBy = "plate-appearance";
+    }
   }
+
+  // Parallel deterministic models → ensemble → disagreement (additive, reuses the
+  // sims above; never recomputes projections and never asks an LLM for a number).
+  const modelEnsemble = computeModelEnsemble({
+    series, family: prop.family, line, seed, marginalSim, paSim, modelVersion: MODEL_VERSION,
+  });
 
   const recommendation = recommend({
     sim: simulation,
@@ -256,7 +275,12 @@ export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload
   return {
     player: playerInfo,
     samples,
-    analysis: { prop, line, side, projection, simulation, analytics, recommendation, modeledBy },
+    analysis: {
+      prop, line, side, projection, simulation, analytics, recommendation, modeledBy,
+      models: modelEnsemble.models,
+      ensemble: modelEnsemble.ensemble,
+      modelDisagreement: modelEnsemble.disagreement,
+    },
     statcast: player.isPitcher ? { pitcher: ownStatcast as StatcastPitcher } : { batter: ownStatcast as StatcastBatter, pitcher: oppStatcast as StatcastPitcher },
     opponent,
     breakdown,

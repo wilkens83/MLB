@@ -99,6 +99,12 @@ export interface VmScientific {
   modelVersion: string;
   featureVersion: string;
   calibrationVersion: string | null;
+  /** Parallel model outputs (marginal / pa / baseline) — additive. */
+  models: { id: string; projection: number; probOver: number; weight: number | null }[];
+  ensembleProbOver: number | null;
+  ensembleVersion: string;
+  /** Deterministic model-disagreement summary. */
+  disagreement: { severity: "low" | "medium" | "high"; probabilityRange: number; modelCount: number };
 }
 
 export interface VmDecision {

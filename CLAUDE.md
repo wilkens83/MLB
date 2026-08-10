@@ -283,6 +283,24 @@ namespace and reuses the pure core.
   failed player to `available:false` (never fabricated). The favorite control is a
   gold star, deliberately not the model-positive green. State: `docs/SCIENTIFIC_QUALITY_PROGRESS.md`.
 
+- **Parallel deterministic models (`src/lib/models/`).** Three DETERMINISTIC
+  statistical models run over the same prop and blend — never an LLM: **Model A**
+  (marginal Monte-Carlo, `simulate`∘`project`), **Model B** (plate-appearance
+  structural, `simulatePlateAppearances`, PA-modeled batter props only, leads the
+  ensemble when present), and **Model C** (`baselineModel` — a recency-weighted
+  control with NO context; a model that can't beat it adds no value). `buildEnsemble`
+  is a versioned weighted average (`MODEL_WEIGHTS = { pa:0.5, marginal:0.35,
+  baseline:0.15 }`, `MODEL_ENSEMBLE_VERSION`) **renormalized over present models** —
+  a missing model is never fabricated, probabilities always sum to 1, contributions
+  preserved. `computeDisagreement` is a deterministic spread (`probabilityRange`/
+  `projectionRange`/`stdDevProbability` → `low|medium|high`) that lowers reliability
+  and strengthens warnings but never alters the projection. Wired **additively** into
+  `runAnalysis` as `analysis.models` / `analysis.ensemble` / `analysis.modelDisagreement`
+  (every existing field, incl. `analysis.recommendation`, is unchanged) and surfaced
+  in the Diamond Edge Model block (per-model rows + ensemble + disagreement badge).
+  A market/PrizePicks line is only a threshold for `P(X>line)` — it never modifies a
+  projection. Design: `docs/graph-engineering/`.
+
 Other route-level pieces: `src/lib/mlb/slate.ts` + `/slate` (multi-game daily
 board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
 (team/game markets — NRFI, totals, run line). Design/consolidation docs live in
