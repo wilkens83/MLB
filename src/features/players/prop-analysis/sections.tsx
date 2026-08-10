@@ -127,6 +127,33 @@ export function ModelBlock({ sci }: { sci: VmScientific | null }) {
         <Chip label="Training" value={sci.trainingSupport} />
         <Chip label="Lifecycle" value={sci.modelLifecycle} />
       </div>
+      {/* Parallel models + ensemble + disagreement (deterministic; never an LLM). */}
+      {sci.models.length > 0 && (
+        <div className="mt-3 rounded-lg border border-border bg-surface-2 p-2.5">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted">Parallel Models</span>
+            <DisagreementBadge severity={sci.disagreement.severity} range={sci.disagreement.probabilityRange} />
+          </div>
+          <div className="space-y-0.5">
+            {sci.models.map((m) => (
+              <div key={m.id} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-2 text-[11px]">
+                <span className="w-16 font-medium capitalize">{m.id}</span>
+                <span className="text-muted-2">proj <span className="tabular-nums text-foreground">{m.projection}</span></span>
+                <span className="tabular-nums text-muted">{pctStr(m.probOver)}</span>
+                <span className="w-10 text-right text-[10px] text-muted-2">{m.weight === null ? "—" : `w ${(m.weight * 100).toFixed(0)}%`}</span>
+              </div>
+            ))}
+            {sci.ensembleProbOver !== null && (
+              <div className="mt-1 grid grid-cols-[auto_1fr_auto_auto] items-center gap-2 border-t border-border/60 pt-1 text-[11px] font-semibold">
+                <span className="w-16">Ensemble</span>
+                <span className="text-muted-2">v{sci.ensembleVersion}</span>
+                <span className="tabular-nums text-brand-500">{pctStr(sci.ensembleProbOver)}</span>
+                <span />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <div className="mt-1.5 flex flex-wrap gap-2 text-[10px] text-muted-2">
         <span>model {sci.modelVersion}</span><span>·</span>
         <span>features {sci.featureVersion}</span><span>·</span>
@@ -137,6 +164,17 @@ export function ModelBlock({ sci }: { sci: VmScientific | null }) {
         Probability, Data Quality (completeness), Calibration, Uncertainty (sampling), Fragility (assumption swing) and Support are kept separate — never compressed into one score. Calibrated is shown only when a fit exists; raw is never relabeled.
       </p>
     </SectionCard>
+  );
+}
+
+function DisagreementBadge({ severity, range }: { severity: "low" | "medium" | "high"; range: number }) {
+  const tone = severity === "low" ? "border-[var(--positive)]/30 text-[var(--positive)]"
+    : severity === "high" ? "border-[var(--negative)]/30 text-[var(--negative)]" : "border-[var(--warning)]/30 text-[var(--warning)]";
+  return (
+    <span className={cn("inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[10px] font-medium capitalize", tone)}>
+      Disagreement: {severity}
+      <span className="text-muted-2">±{(range * 100).toFixed(0)}pp</span>
+    </span>
   );
 }
 

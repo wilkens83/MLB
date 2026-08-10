@@ -218,6 +218,19 @@ export function buildScientific(payload: AnalysisPayload, line: number): VmScien
     modelVersion: MODEL_VERSION,
     featureVersion: "live",
     calibrationVersion: cal.available ? cal.version : null,
+    models: a.models.map((m) => ({
+      id: m.id,
+      projection: m.projection,
+      probOver: m.probOver,
+      weight: a.ensemble.weights[m.id] ?? null,
+    })),
+    ensembleProbOver: a.ensemble.rawProbOver,
+    ensembleVersion: a.ensemble.version,
+    disagreement: {
+      severity: a.modelDisagreement.severity,
+      probabilityRange: a.modelDisagreement.probabilityRange,
+      modelCount: a.modelDisagreement.modelCount,
+    },
   };
 }
 
