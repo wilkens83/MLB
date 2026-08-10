@@ -27,6 +27,17 @@ is the foundation and is never replaced by an LLM.
 - [x] Surfaced in the research view model + Diamond Edge Model UI (per-model rows, ensemble, disagreement badge)
 - [x] Tests: invariants (probs∈[0,1], sum→1, projection≥0), determinism, renormalization, missing-model, low/medium/high disagreement
 
+## Phase 3.5 — Walk-forward measurement + persisted-prediction contracts  ← THIS PHASE
+- [x] Canonical immutable `PredictionSnapshot` + `freezeSnapshot` (`src/lib/backtest/snapshot.ts`)
+- [x] Temporal-leakage guard `checkNoLeakage` (`dataTimestamp <= predictionTimestamp < gameStartTime`) + tests
+- [x] Postgame `gradePrediction` (reuses `clearsLine`; no re-derived prop formulas)
+- [x] `runWalkForwardBacktest` — chronological, leakage-free, scores baseline/marginal/(pa)/ensemble SEPARATELY
+- [x] Per-model comparison + byProp + byDisagreement + byDataQuality + ensemble calibration bins
+- [x] Live adapter (`liveWalkForward.ts`) + `POST /api/backtest` + minimal read-only `/model-lab`
+- [x] Weights NOT changed (measure first, tune later)
+- [ ] Persist walk-forward reports + point-in-time snapshots to Supabase (currently computed on demand)
+- [ ] Score PA (Model B) live from reconstructed point-in-time PA rates
+
 ## Phase 4 — Calibration
 - [x] Calibration model + identity fallback (`unavailableCalibration`) — calibrated ≠ raw, calibrated null when no fit
 - [ ] Fitted binning/isotonic calibrator from persisted grades (pending sufficient history)
