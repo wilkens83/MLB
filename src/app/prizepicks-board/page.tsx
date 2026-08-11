@@ -96,7 +96,7 @@ function BoardInner() {
       const toEval = current.filter((e) => e.status === "resolved" && e.mlbPlayerId && e.marketSupported);
       if (toEval.length) {
         const body = {
-          entries: toEval.map((e) => ({ entryId: e.id, mlbPlayerId: e.mlbPlayerId!, marketKey: e.marketKey, line: e.line, gamePk: e.gamePk, lineCapturedAt: e.capturedAt })),
+          entries: toEval.map((e) => ({ entryId: e.id, mlbPlayerId: e.mlbPlayerId!, marketKey: e.marketKey, line: e.line, gamePk: e.gamePk, lineCapturedAt: e.capturedAt, alternativeLines: e.alternativeLines })),
         };
         const out = (await fetch("/api/prizepicks/evaluate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json())) as {
           results: { entryId: string; evaluation: CandidateEvaluation | null; ranking: RankingResult | null }[];

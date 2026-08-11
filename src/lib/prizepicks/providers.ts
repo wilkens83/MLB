@@ -61,6 +61,12 @@ export function buildBoardEntry(raw: RawEntry): PrizePicksBoardEntry {
     marketSupported: resolvedMarket?.supported ?? false,
     line: raw.line,
     projectionType: raw.projectionType,
+    // Additive source metadata (present for screenshot imports; omitted for
+    // manual/CSV). Alternative thresholds and PP-displayed history are never
+    // fed to the projection — they are display-only provenance.
+    alternativeLines: raw.alternativeLines,
+    sourceHistory: raw.sourceHistory,
+    sourceAverageL5: raw.sourceAverageL5,
     gameStartTime: raw.gameStartTime,
     status: resolvedMarket ? "unresolved" : "invalid",
     snapshots: [
@@ -114,4 +120,36 @@ export const csvProvider: BoardProvider = {
   },
 };
 
-export const PROVIDERS: BoardProvider[] = [manualProvider, csvProvider];
+/**
+ * Screenshot (reviewed-image-import) provider — input is a JSON array of RawEntry
+ * produced by the human-reviewed screenshot flow. It is deliberately identical to
+ * the manual provider in shape (same normalized RawEntry → buildBoardEntry): a
+ * screenshot is just another INPUT source that lands in the same pipeline after
+ * mandatory review. Uncertain rows arrive already flagged (unknown market → the
+ * shared normalizer marks them invalid/for review).
+ */
+export const screenshotProvider: BoardProvider = {
+  id: "screenshot",
+  label: "Screenshot import",
+  sourceType: "reviewed-image-import",
+  async importBoard(input: string): Promise<ImportResult> {
+    const errors: PrizePicksImportError[] = [];
+    let raws: RawEntry[] = [];
+    try {
+      raws = JSON.parse(input) as RawEntry[];
+    } catch {
+      errors.push({ row: 0, message: "invalid screenshot payload" });
+    }
+    const entries = raws.map(buildBoardEntry);
+    return {
+      session: {
+        id: id("sess"), sourceType: "reviewed-image-import", createdAt: new Date().toISOString(),
+        imported: entries.length, rejected: errors.length, errors,
+      },
+      entries,
+      errors,
+    };
+  },
+};
+
+export const PROVIDERS: BoardProvider[] = [manualProvider, csvProvider, screenshotProvider];
