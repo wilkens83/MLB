@@ -301,6 +301,27 @@ namespace and reuses the pure core.
   A market/PrizePicks line is only a threshold for `P(X>line)` — it never modifies a
   projection. Design: `docs/graph-engineering/`.
 
+- **Reddit research / context signals (`src/lib/research/`, `/api/research/*`).**
+  An early-warning **context** layer, not a model input: it ingests Reddit
+  (`provider.ts` + `queries.ts` per player/subreddit), then `classify` → `dedupe`
+  (cluster) → `credibility` → `verify` → `sentiment`/`trend` build a
+  `PlayerResearch` payload of typed `ContextEvent`s (`scratch`/`pitch_limit`/
+  `opener`/`return_from_il`/…), each with a `ContextEventStatus` of
+  `unverified | reported | confirmed | rejected`. `service.ts` is the server-only
+  orchestrator (10-min TTL, resolves identity via the MLB API, derives a
+  deterministic `VerificationContext` from Statcast velocity); it is a
+  **NON-CRITICAL** node — any failure yields an honest `unavailable` payload and
+  never throws into analysis. **The one sanctioned bridge to the model is
+  `features.ts` (`contextEventsToFeatures`), which consumes CONFIRMED events ONLY**
+  and emits explicit, testable feature flags (e.g. `usagePitchCeiling`,
+  `playerUnavailable`) — never a probability delta; sentiment/trend/credibility and
+  unverified/reported/rejected events can never produce a feature. `evaluate.ts` is
+  a point-in-time **validation gate** (base-rate vs event-present lift) that returns
+  `unvalidated`/`insufficient_history` until enough persisted history exists — it
+  never claims Reddit is validated and never feeds back into a projection. Events
+  persist via `store.ts` (Supabase when keyed, else in-memory). Pure stages + tested
+  (incl. `safety-invariant.test.ts`).
+
 Other route-level pieces: `src/lib/mlb/slate.ts` + `/slate` (multi-game daily
 board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
 (team/game markets — NRFI, totals, run line). Design/consolidation docs live in
