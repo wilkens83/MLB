@@ -64,7 +64,9 @@ is the foundation and is never replaced by an LLM.
 - [x] `GET /api/research/reddit/player/[id]` + News & Community Signals UI (below the model)
 - [x] Snapshot integration (`contextEvents`) with `fetchedAt <= predictionTimestamp` leakage guard
 - [x] **Absolute safety invariant test**: different Reddit sentiment ⇒ identical model probability
-- [ ] Persist ContextEvents to Supabase + validate predictive value over history (unvalidated today)
+- [x] Persist ContextEvents to Supabase — append-only `context_events` (service-write/auth-read), point-in-time; `SupabaseContextEventStore` behind the store interface
+- [x] Predictive-value evaluation gate (`evaluate.ts`) — base-rate-vs-event lift, min-sample gating, never returns "validated" (unvalidated today)
+- [ ] Accumulate persisted history, then a governance review may promote a confirmed-event feature into the deterministic usage engine
 - [ ] Optional graph node wiring (currently a non-critical, client-fetched surface — analysis never depends on it)
 - Doc: `docs/product/REDDIT_RESEARCH.md`
 

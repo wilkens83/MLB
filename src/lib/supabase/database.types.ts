@@ -17,6 +17,78 @@ export type Database = {
   }
   public: {
     Tables: {
+      context_events: {
+        Row: {
+          captured_at: string
+          confidence: number
+          credibility_level: string | null
+          credibility_reasons: string[]
+          event_key: string
+          fetched_at: string
+          first_seen_at: string | null
+          game_pk: number | null
+          id: string
+          last_seen_at: string | null
+          mentions: number
+          player_id: number
+          severity: string
+          source_type: string
+          sources: Json
+          status: string
+          subreddits: string[]
+          summary: string
+          type: string
+          unique_threads: number
+          verification_note: string | null
+        }
+        Insert: {
+          captured_at?: string
+          confidence: number
+          credibility_level?: string | null
+          credibility_reasons?: string[]
+          event_key: string
+          fetched_at: string
+          first_seen_at?: string | null
+          game_pk?: number | null
+          id?: string
+          last_seen_at?: string | null
+          mentions?: number
+          player_id: number
+          severity: string
+          source_type?: string
+          sources?: Json
+          status: string
+          subreddits?: string[]
+          summary: string
+          type: string
+          unique_threads?: number
+          verification_note?: string | null
+        }
+        Update: {
+          captured_at?: string
+          confidence?: number
+          credibility_level?: string | null
+          credibility_reasons?: string[]
+          event_key?: string
+          fetched_at?: string
+          first_seen_at?: string | null
+          game_pk?: number | null
+          id?: string
+          last_seen_at?: string | null
+          mentions?: number
+          player_id?: number
+          severity?: string
+          source_type?: string
+          sources?: Json
+          status?: string
+          subreddits?: string[]
+          summary?: string
+          type?: string
+          unique_threads?: number
+          verification_note?: string | null
+        }
+        Relationships: []
+      }
       circuit_breaker_events: {
         Row: {
           breaker_type: string

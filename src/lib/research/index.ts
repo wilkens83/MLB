@@ -14,4 +14,9 @@ export { contextEventsToFeatures } from "./features";
 export {
   InMemoryContextEventStore, getContextEventStore, type ContextEventStore,
 } from "./store";
+export { SupabaseContextEventStore } from "./supabase-store";
 export { redditResearchProvider, disabledRedditProvider } from "./provider";
+export {
+  evaluateContextPredictiveValue,
+  type ContextObservation, type EventTypeEvaluation, type ContextEvaluationReport, type EvaluationConfig,
+} from "./evaluate";
