@@ -7,7 +7,7 @@
    Read-only over the protected MLB data layer.
    ========================================================================== */
 
-import { searchPlayers, getSchedule } from "@/lib/mlb/api";
+import { searchPlayers, getSchedule, getPlayer } from "@/lib/mlb/api";
 import { mapGame } from "@/lib/providers/mlbStats";
 import { normalizePlayerName, normalizePlayerNameLoose } from "./normalize";
 import type { MarketCategory, PlayerCandidate, PrizePicksPlayerResolution } from "./types";
@@ -17,6 +17,8 @@ export interface ResolveInput {
   boardDate: string;
   teamAbbreviation?: string;
   categoryHint?: MarketCategory; // pitcher market requires a pitcher, etc.
+  /** Canonical MLB id from an autocomplete pick — trusted over a name re-search. */
+  mlbPlayerId?: number;
 }
 
 export interface GameResolution {
@@ -60,8 +62,36 @@ async function candidatesFor(rawName: string): Promise<PlayerCandidate[]> {
     }));
 }
 
+/** Fetch a single player by canonical id and connect their scheduled game. */
+async function resolveByPlayerId(
+  mlbPlayerId: number,
+  boardDate: string,
+): Promise<PrizePicksPlayerResolution | null> {
+  const person = await getPlayer(mlbPlayerId).catch(() => null);
+  if (!person) return null;
+  const chosen: PlayerCandidate = {
+    mlbPlayerId: person.id,
+    fullName: person.fullName,
+    position: person.primaryPosition?.abbreviation ?? "",
+    isPitcher: person.primaryPosition?.abbreviation === "P",
+    teamId: person.currentTeam?.id,
+    teamName: person.currentTeam?.name,
+  };
+  const game = await resolveGame(chosen, boardDate);
+  const withGame: PlayerCandidate = { ...chosen, gamePk: game.gamePk, opponentName: game.opponentName };
+  return { status: "resolved", candidates: [withGame], chosen: withGame, reason: "canonical player id" };
+}
+
 /** Resolve the raw name to a player, applying role + team compatibility. */
 export async function resolvePlayer(input: ResolveInput): Promise<PrizePicksPlayerResolution> {
+  // A canonical id from the autocomplete is authoritative — trust it and only
+  // resolve the game, never re-searching by (possibly ambiguous) name.
+  if (input.mlbPlayerId) {
+    const byId = await resolveByPlayerId(input.mlbPlayerId, input.boardDate);
+    if (byId) return byId;
+    // Fall through to name resolution if the id lookup failed (stale/unknown id).
+  }
+
   let candidates = await candidatesFor(input.rawPlayerName);
 
   if (candidates.length === 0) {

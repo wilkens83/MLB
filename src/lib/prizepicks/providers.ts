@@ -48,6 +48,12 @@ export function buildBoardEntry(raw: RawEntry): PrizePicksBoardEntry {
     sourceReference: raw.sourceReference,
     rawPlayerName: raw.rawPlayerName,
     normalizedPlayerName: normalizePlayerName(raw.rawPlayerName),
+    // Carry canonical identity forward when the player was picked from the
+    // autocomplete, so the resolve step trusts the id instead of re-searching.
+    mlbPlayerId: raw.mlbPlayerId,
+    mlbTeamId: raw.mlbTeamId,
+    position: raw.position,
+    resolvedTeamName: raw.resolvedTeamName,
     teamAbbreviation: normalizeTeamAbbr(raw.teamAbbreviation),
     opponentAbbreviation: normalizeTeamAbbr(raw.opponentAbbreviation),
     marketKey: resolvedMarket?.canonical ?? "",

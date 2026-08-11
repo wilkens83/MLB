@@ -4,7 +4,9 @@ import { normalizePlayerName, normalizeProjectionType, stripAccents } from "./no
 import { parseBoardCsv } from "./csv";
 import { computeRanking, classifySignal, DEFAULT_THRESHOLDS } from "./ranking";
 import { gradeResult, computeActual, statGroupForMarket } from "./grading";
-import type { CandidateEvaluation } from "./types";
+import { buildBoardEntry } from "./providers";
+import { rawEntrySchema } from "./types";
+import type { CandidateEvaluation, RawEntry } from "./types";
 
 describe("market normalization", () => {
   test("canonical labels resolve", () => {
@@ -46,6 +48,45 @@ describe("market normalization", () => {
   });
   test("normalizeLabel collapses punctuation", () => {
     expect(normalizeLabel("Hits + Runs + RBIs")).toBe("hits runs rbis");
+  });
+});
+
+describe("buildBoardEntry — canonical identity from autocomplete", () => {
+  const base: RawEntry = {
+    boardDate: "2026-08-11",
+    capturedAt: "2026-08-11T16:00:00-04:00",
+    sourceType: "manual",
+    rawPlayerName: "Sonny Gray",
+    rawMarketLabel: "Pitcher Walks",
+    line: 1.5,
+    projectionType: "standard",
+  };
+
+  test("preserves the canonical playerId + team/position when picked from search", () => {
+    const raw: RawEntry = { ...base, mlbPlayerId: 543243, mlbTeamId: 138, position: "P", resolvedTeamName: "St. Louis Cardinals" };
+    // schema accepts the additive fields
+    expect(rawEntrySchema.safeParse(raw).success).toBe(true);
+    const entry = buildBoardEntry(raw);
+    expect(entry.mlbPlayerId).toBe(543243);
+    expect(entry.mlbTeamId).toBe(138);
+    expect(entry.position).toBe("P");
+    expect(entry.resolvedTeamName).toBe("St. Louis Cardinals");
+    expect(entry.rawPlayerName).toBe("Sonny Gray");
+  });
+
+  test("free-text entry (no autocomplete pick) still builds — id fields stay undefined", () => {
+    const raw: RawEntry = { ...base, rawPlayerName: "sonny gray" };
+    expect(rawEntrySchema.safeParse(raw).success).toBe(true);
+    const entry = buildBoardEntry(raw);
+    expect(entry.mlbPlayerId).toBeUndefined();
+    expect(entry.mlbTeamId).toBeUndefined();
+    expect(entry.normalizedPlayerName).toBe("sonny gray"); // resolver still works by name
+  });
+
+  test("rejects a non-positive / non-integer playerId at the boundary", () => {
+    expect(rawEntrySchema.safeParse({ ...base, mlbPlayerId: 0 }).success).toBe(false);
+    expect(rawEntrySchema.safeParse({ ...base, mlbPlayerId: -5 }).success).toBe(false);
+    expect(rawEntrySchema.safeParse({ ...base, mlbPlayerId: 1.5 }).success).toBe(false);
   });
 });
 

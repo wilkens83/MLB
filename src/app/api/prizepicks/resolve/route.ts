@@ -12,10 +12,12 @@ export async function GET(req: NextRequest) {
   const team = sp.get("team") ?? undefined;
   const cat = sp.get("category");
   const categoryHint = cat === "pitcher" || cat === "hitter" ? (cat as MarketCategory) : undefined;
+  const pid = sp.get("playerId");
+  const mlbPlayerId = pid && /^\d+$/.test(pid) ? Number(pid) : undefined;
 
   if (!name) return NextResponse.json({ error: "name required" }, { status: 400 });
   try {
-    const resolution = await resolvePlayer({ rawPlayerName: name, boardDate: date, teamAbbreviation: team, categoryHint });
+    const resolution = await resolvePlayer({ rawPlayerName: name, boardDate: date, teamAbbreviation: team, categoryHint, mlbPlayerId });
     return NextResponse.json(resolution);
   } catch {
     return NextResponse.json({ status: "not-found", candidates: [], reason: "resolve_failed" }, { status: 502 });

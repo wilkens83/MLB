@@ -175,6 +175,12 @@ export const rawEntrySchema = z.object({
   sourceType: sourceTypeSchema,
   sourceReference: z.string().optional(),
   rawPlayerName: z.string().min(1, "player name required"),
+  // Canonical MLB identity captured when the player was picked from the
+  // autocomplete (additive — free-text entry omits these and is still valid).
+  mlbPlayerId: z.number().int().positive().optional(),
+  mlbTeamId: z.number().int().positive().optional(),
+  position: z.string().optional(),
+  resolvedTeamName: z.string().optional(),
   teamAbbreviation: z.string().optional(),
   opponentAbbreviation: z.string().optional(),
   rawMarketLabel: z.string().min(1, "market required"),

@@ -6,11 +6,19 @@ import { cn } from "@/lib/utils";
 import { csvProvider, buildBoardEntry } from "@/lib/prizepicks/providers";
 import { CSV_TEMPLATE, CSV_HEADER } from "@/lib/prizepicks/csv";
 import { allMarkets } from "@/lib/prizepicks/market-map";
+import { marketRoleHint } from "@/lib/prizepicks/autocomplete";
+import { PlayerAutocomplete } from "@/components/prizepicks/player-autocomplete";
 import type { PrizePicksBoardEntry, RawEntry, ProjectionType } from "@/lib/prizepicks/types";
 import type { PrizePicksImportError } from "@/lib/prizepicks/types";
 
 interface ManualRow {
   player: string;
+  // Canonical identity, set when a player is picked from the autocomplete;
+  // cleared when the field is edited freely (free text still resolves by name).
+  mlbPlayerId?: number;
+  mlbTeamId?: number;
+  position?: string;
+  resolvedTeamName?: string;
   market: string;
   line: string;
   projectionType: ProjectionType;
@@ -84,6 +92,10 @@ function ManualTab({ boardDate, onImport, onClose }: { boardDate: string; onImpo
         capturedAt: now,
         sourceType: "manual",
         rawPlayerName: row.player.trim(),
+        mlbPlayerId: row.mlbPlayerId,
+        mlbTeamId: row.mlbTeamId,
+        position: row.position,
+        resolvedTeamName: row.resolvedTeamName,
         teamAbbreviation: row.team.trim() || undefined,
         opponentAbbreviation: row.opponent.trim() || undefined,
         rawMarketLabel: row.market,
@@ -104,7 +116,29 @@ function ManualTab({ boardDate, onImport, onClose }: { boardDate: string; onImpo
       <div className="max-h-[46vh] space-y-2 overflow-y-auto pr-1">
         {rows.map((row, i) => (
           <div key={i} className="grid grid-cols-12 gap-1.5 rounded-lg border border-border p-2">
-            <input value={row.player} onChange={(e) => update(i, { player: e.target.value })} placeholder="Player" className="col-span-4 h-8 rounded border border-border bg-surface px-2 text-sm outline-none" />
+            <PlayerAutocomplete
+              value={row.player}
+              role={marketRoleHint(markets.find((m) => m.label === row.market)?.category)}
+              onChange={(text) =>
+                update(i, {
+                  player: text,
+                  mlbPlayerId: undefined,
+                  mlbTeamId: undefined,
+                  position: undefined,
+                  resolvedTeamName: undefined,
+                })
+              }
+              onSelect={(sel) =>
+                update(i, {
+                  player: sel.playerName,
+                  mlbPlayerId: sel.playerId,
+                  mlbTeamId: sel.teamId,
+                  position: sel.position,
+                  resolvedTeamName: sel.teamName,
+                })
+              }
+              className="col-span-4"
+            />
             <select value={row.market} onChange={(e) => update(i, { market: e.target.value })} className="col-span-3 h-8 rounded border border-border bg-surface px-1 text-xs outline-none">
               {markets.map((m) => <option key={m.canonical} value={m.label}>{m.label}</option>)}
             </select>

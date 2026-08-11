@@ -70,9 +70,12 @@ function BoardInner() {
       // 1) Resolve players/games for entries that aren't resolved yet.
       let current = store.loadBoard(date);
       for (const e of current) {
-        if (e.status !== "unresolved" || e.mlbPlayerId) continue;
+        // A pre-selected player (from the autocomplete) still needs its game
+        // resolved — pass the canonical id so the resolver trusts it instead of
+        // re-searching by name.
+        if (e.status !== "unresolved") continue;
         const cat = MARKETS.find((m) => m.canonical === e.marketKey)?.category;
-        const params = new URLSearchParams({ name: e.rawPlayerName, date, ...(e.teamAbbreviation ? { team: e.teamAbbreviation } : {}), ...(cat ? { category: cat } : {}) });
+        const params = new URLSearchParams({ name: e.rawPlayerName, date, ...(e.mlbPlayerId ? { playerId: String(e.mlbPlayerId) } : {}), ...(e.teamAbbreviation ? { team: e.teamAbbreviation } : {}), ...(cat ? { category: cat } : {}) });
         const res = (await fetch(`/api/prizepicks/resolve?${params}`).then((r) => r.json())) as PrizePicksPlayerResolution;
         if (res.status === "resolved" && res.chosen) {
           const c: PlayerCandidate = res.chosen;
