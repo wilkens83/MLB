@@ -64,7 +64,10 @@ const MLB_UI: SportUi = {
     },
     {
       title: "Tools",
-      items: [{ href: "/health", label: "Data Health", icon: HeartPulse, match: (p) => p.startsWith("/health") }],
+      items: [
+        { href: "/health", label: "Data Health", icon: HeartPulse, match: (p) => p.startsWith("/health") },
+        { href: "/model-lab", label: "Model Lab", icon: FlaskConical, match: (p) => p.startsWith("/model-lab") },
+      ],
     },
   ],
 };
