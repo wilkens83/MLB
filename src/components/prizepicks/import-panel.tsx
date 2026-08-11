@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, Upload, FileDown, X, Keyboard, FileText } from "lucide-react";
+import { Plus, Trash2, Upload, FileDown, X, Keyboard, FileText, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { csvProvider, buildBoardEntry } from "@/lib/prizepicks/providers";
 import { CSV_TEMPLATE, CSV_HEADER } from "@/lib/prizepicks/csv";
 import { allMarkets } from "@/lib/prizepicks/market-map";
 import { marketRoleHint } from "@/lib/prizepicks/autocomplete";
 import { PlayerAutocomplete } from "@/components/prizepicks/player-autocomplete";
+import { ScreenshotImportTab } from "@/components/prizepicks/screenshot-import";
 import type { PrizePicksBoardEntry, RawEntry, ProjectionType } from "@/lib/prizepicks/types";
 import type { PrizePicksImportError } from "@/lib/prizepicks/types";
 
@@ -38,7 +39,7 @@ export function ImportPanel({
   onImport: (entries: PrizePicksBoardEntry[]) => void;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<"manual" | "csv">("manual");
+  const [tab, setTab] = useState<"manual" | "csv" | "screenshot">("manual");
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8">
@@ -50,14 +51,14 @@ export function ImportPanel({
           </button>
         </div>
         <div className="flex gap-1 border-b border-border px-4 pt-3">
-          {(["manual", "csv"] as const).map((t) => (
+          {(["manual", "csv", "screenshot"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={cn("relative flex items-center gap-1.5 px-3 py-2 text-sm font-medium", tab === t ? "text-brand-500" : "text-muted hover:text-foreground")}
             >
-              {t === "manual" ? <Keyboard className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-              {t === "manual" ? "Manual entry" : "CSV import"}
+              {t === "manual" ? <Keyboard className="h-4 w-4" /> : t === "csv" ? <FileText className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
+              {t === "manual" ? "Manual entry" : t === "csv" ? "CSV import" : "Screenshot"}
               {tab === t && <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-brand-500" />}
             </button>
           ))}
@@ -65,8 +66,10 @@ export function ImportPanel({
         <div className="p-4">
           {tab === "manual" ? (
             <ManualTab boardDate={boardDate} onImport={onImport} onClose={onClose} />
-          ) : (
+          ) : tab === "csv" ? (
             <CsvTab boardDate={boardDate} onImport={onImport} onClose={onClose} />
+          ) : (
+            <ScreenshotImportTab boardDate={boardDate} onImport={onImport} onClose={onClose} />
           )}
         </div>
       </div>

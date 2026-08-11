@@ -38,6 +38,27 @@ export interface PrizePicksLineSnapshot {
   note?: string;
 }
 
+/**
+ * An alternative threshold for the SAME canonical market. Goblin/Standard/Demon
+ * lines are NOT separate props — they are the same underlying projection scored
+ * at a different threshold. Preserved as PrizePicks source metadata.
+ */
+export interface PrizePicksAlternativeLine {
+  line: number;
+  projectionType: ProjectionType;
+}
+
+/**
+ * A PrizePicks-displayed recent-history row (value / opponent / date). This is
+ * SOURCE metadata shown on the card ONLY — it is never fed to the projection or
+ * used as a substitute for official MLB game-log data.
+ */
+export interface PrizePicksHistoryPoint {
+  value: number;
+  opponent?: string;
+  date?: string;
+}
+
 /** A normalized board entry — preserves original text, source and timestamps. */
 export interface PrizePicksBoardEntry {
   id: string;
@@ -68,6 +89,17 @@ export interface PrizePicksBoardEntry {
 
   line: number;
   projectionType: ProjectionType;
+
+  /**
+   * Other thresholds captured for THIS market (goblin/demon variants). Source
+   * metadata only — the primary `line` above is what the engine is scored at;
+   * these are additional thresholds to display, never new props.
+   */
+  alternativeLines?: PrizePicksAlternativeLine[];
+  /** PrizePicks-displayed recent history (source metadata; never a model input). */
+  sourceHistory?: PrizePicksHistoryPoint[];
+  /** PrizePicks-displayed last-5 average (source metadata; never a model input). */
+  sourceAverageL5?: number;
 
   gameStartTime?: string;
   status: EntryStatus;
@@ -130,6 +162,17 @@ export interface CandidateEvaluation {
   probLess: number;
   probPush: number;
   projectionDiff: number; // projection - line
+  /**
+   * Directional probabilities for the SAME projection at each alternative
+   * threshold (goblin/demon). Read from the model distribution the engine
+   * already produced — the projection is identical; only the threshold moves.
+   */
+  alternativeLines?: {
+    line: number;
+    projectionType: ProjectionType;
+    probMore: number;
+    probLess: number;
+  }[];
   hitRates: { l5: number; l10: number; l20: number; season: number };
   dataQuality: number;
   modelAgreement: number; // 0..1
@@ -186,6 +229,15 @@ export const rawEntrySchema = z.object({
   rawMarketLabel: z.string().min(1, "market required"),
   line: z.number().finite().nonnegative().or(z.number().finite()), // some markets negative (spread); board markets are >=0
   projectionType: projectionTypeSchema.default("standard"),
+  // Alternative thresholds + PrizePicks-displayed history (additive source
+  // metadata; free-text/CSV entries omit these and stay valid).
+  alternativeLines: z
+    .array(z.object({ line: z.number().finite(), projectionType: projectionTypeSchema }))
+    .optional(),
+  sourceHistory: z
+    .array(z.object({ value: z.number().finite(), opponent: z.string().optional(), date: z.string().optional() }))
+    .optional(),
+  sourceAverageL5: z.number().finite().optional(),
   gameStartTime: z.string().optional(),
   notes: z.string().optional(),
 });
@@ -214,6 +266,13 @@ export const boardEntrySchema: z.ZodType<PrizePicksBoardEntry> = z.object({
   marketSupported: z.boolean(),
   line: z.number(),
   projectionType: projectionTypeSchema,
+  alternativeLines: z
+    .array(z.object({ line: z.number(), projectionType: projectionTypeSchema }))
+    .optional(),
+  sourceHistory: z
+    .array(z.object({ value: z.number(), opponent: z.string().optional(), date: z.string().optional() }))
+    .optional(),
+  sourceAverageL5: z.number().optional(),
   gameStartTime: z.string().optional(),
   status: z.enum(["unresolved", "resolved", "ambiguous", "invalid", "archived"]),
   snapshots: z.array(
