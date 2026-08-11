@@ -22,6 +22,7 @@ import { marketsForPlayerType, defaultMarketFor } from "@/lib/players/prop-analy
 import type { PlayerPropAnalysisViewModel } from "@/lib/players/prop-analysis/types";
 import { SavePlayerButtons } from "@/features/players/save-player-buttons";
 import { PerformanceChart } from "./performance-chart";
+import { NewsCommunitySignals } from "./news-signals";
 import { timeAgo } from "./format";
 import {
   HeaderMetrics, HitRateWindows, ModelBlock, DecisionBlock, ConditionsRow,
@@ -160,6 +161,14 @@ export function PropAnalysisView({
             {vm ? <ModelBlock sci={vm.scientific} /> : <Skeleton className="h-64 w-full" />}
             {vm ? <DecisionBlock decision={vm.decision} sci={vm.scientific} /> : <Skeleton className="h-64 w-full" />}
           </div>
+
+          {/* News & community signals (Reddit) — supporting intel, below the model */}
+          {vm && vm.player && (
+            <NewsCommunitySignals
+              playerId={vm.player.id}
+              modelProbMore={vm.scientific ? vm.scientific.rawProbabilityMore : null}
+            />
+          )}
 
           {/* Provenance */}
           {vm && <ProvenanceBar vm={vm} />}
