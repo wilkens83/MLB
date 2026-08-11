@@ -54,8 +54,19 @@ is the foundation and is never replaced by an LLM.
 - [x] Import → normalize → resolve → evaluate via existing `runAnalysis` (no duplication)
 - [x] Line-snapshot history, duplicate detection, pregame snapshots, grading
 
-## Phase 8 — Research contracts
-- [ ] `ContextEvent` typed contracts for future research agents (planned; no automatic LLM adjustment)
+## Phase 8 — Research contracts + Reddit intelligence
+- [x] `ContextEvent` typed domain (`src/lib/research/types.ts`)
+- [x] Reddit provider (public search, disabled-by-default, honest unavailable state — no fake data)
+- [x] Deterministic classify → cluster/dedup → credibility → verify pipeline
+- [x] Secondary community sentiment + trend velocity (never model inputs)
+- [x] Verification node (Statcast velocity + confirmed lineup + official) → confirmed/reported/unverified/rejected
+- [x] Event → feature bridge (`features.ts`) — CONFIRMED events only; sentiment can never produce a feature
+- [x] `GET /api/research/reddit/player/[id]` + News & Community Signals UI (below the model)
+- [x] Snapshot integration (`contextEvents`) with `fetchedAt <= predictionTimestamp` leakage guard
+- [x] **Absolute safety invariant test**: different Reddit sentiment ⇒ identical model probability
+- [ ] Persist ContextEvents to Supabase + validate predictive value over history (unvalidated today)
+- [ ] Optional graph node wiring (currently a non-critical, client-fetched surface — analysis never depends on it)
+- Doc: `docs/product/REDDIT_RESEARCH.md`
 
 ## Validation (this phase)
 - Tests: 606 pass / 0 fail

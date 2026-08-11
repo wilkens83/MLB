@@ -11,6 +11,18 @@
    ========================================================================== */
 
 import type { ModelOutput, EnsembleOutput, ModelDisagreement } from "@/lib/models";
+import type { ContextEvent } from "@/lib/research/types";
+
+/** Compact, point-in-time copy of a context event captured with a prediction. */
+export interface ContextEventSnapshot {
+  id: string;
+  type: ContextEvent["type"];
+  status: ContextEvent["status"];
+  severity: ContextEvent["severity"];
+  confidence: number;
+  summary: string;
+  fetchedAt: number;
+}
 
 export interface PredictionMarketSnapshot {
   source: string;
@@ -61,6 +73,8 @@ export interface PredictionSnapshot {
 
   provenance: PredictionProvenanceLite;
   marketSnapshot?: PredictionMarketSnapshot;
+  /** Context events KNOWN AT prediction time. Future events are excluded. */
+  contextEvents?: ContextEventSnapshot[];
 }
 
 export interface LeakageCheck {
@@ -102,4 +116,21 @@ export function snapshotIsLeakageFree(s: PredictionSnapshot): LeakageCheck {
  */
 export function freezeSnapshot(s: PredictionSnapshot): Readonly<PredictionSnapshot> {
   return Object.freeze({ ...s });
+}
+
+/**
+ * Select the context events KNOWN at prediction time and compact them for the
+ * snapshot. Any event whose `fetchedAt` is after the prediction timestamp is
+ * excluded — future Reddit information can never leak into a historical snapshot.
+ */
+export function attachContextEvents(
+  events: ContextEvent[],
+  predictionTimestamp: number,
+): ContextEventSnapshot[] {
+  return events
+    .filter((e) => e.fetchedAt <= predictionTimestamp)
+    .map((e) => ({
+      id: e.id, type: e.type, status: e.status, severity: e.severity,
+      confidence: e.confidence, summary: e.summary, fetchedAt: e.fetchedAt,
+    }));
 }

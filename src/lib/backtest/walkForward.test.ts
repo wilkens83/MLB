@@ -1,7 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { runWalkForwardBacktest, type WalkForwardSeries } from "./walkForward";
 import { gradePrediction } from "./grader";
-import { checkNoLeakage, freezeSnapshot, snapshotIsLeakageFree, type PredictionSnapshot } from "./snapshot";
+import { checkNoLeakage, freezeSnapshot, snapshotIsLeakageFree, attachContextEvents, type PredictionSnapshot } from "./snapshot";
+import type { ContextEvent } from "@/lib/research/types";
 
 /* ------------------------------- snapshot --------------------------------- */
 
@@ -24,6 +25,19 @@ describe("temporal-leakage guard (dataTimestamp <= predictionTimestamp < gameSta
     const frozen = freezeSnapshot(snap);
     expect(snapshotIsLeakageFree(frozen).ok).toBe(true);
     expect(() => { (frozen as unknown as { line: number }).line = 5; }).toThrow();
+  });
+
+  it("attaches only context events known at prediction time — future Reddit is excluded", () => {
+    const ev = (id: string, fetchedAt: number): ContextEvent => ({
+      id, playerId: 1, type: "pitch_limit", summary: "x", status: "unverified", confidence: 0.4,
+      severity: "high", sourceType: "reddit",
+      reddit: { mentions: 1, subreddits: [], firstSeenAt: fetchedAt, lastSeenAt: fetchedAt, uniqueThreads: 1 },
+      credibility: { level: "low", reasons: [] }, sources: [], fetchedAt,
+    });
+    const predictionTimestamp = 150;
+    const attached = attachContextEvents([ev("past", 100), ev("future", 200)], predictionTimestamp);
+    expect(attached.map((e) => e.id)).toEqual(["past"]); // future event dropped (no leakage)
+    expect(attached[0].summary).toBe("x");
   });
 });
 
