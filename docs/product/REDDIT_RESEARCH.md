@@ -83,10 +83,29 @@ reported / rejected events produce **nothing** numerical.
 `fetchedAt > predictionTimestamp` — future Reddit information can never leak into a
 historical snapshot. Backtesting therefore never injects post-hoc rumors.
 
+## Persistence & predictive-value evaluation
+
+- **Storage.** `context_events` (Supabase migration `20260811000000`) is
+  **append-only** and **point-in-time**: every fetch appends a capture; a DB
+  trigger blocks UPDATE/DELETE, so the full history of how a signal evolved is
+  preserved. RLS is service-role-write / authenticated-read.
+  `SupabaseContextEventStore` sits behind the existing `ContextEventStore`
+  interface; `getContextEventStore()` uses it when `SUPABASE_SERVICE_ROLE_KEY` is
+  set, else the in-memory baseline. Reads collapse to the latest capture per
+  `event_key`.
+- **Evaluation gate.** `evaluateContextPredictiveValue(observations)`
+  (`evaluate.ts`) measures whether an event type/status's *presence* correlates
+  with an outcome — base rate vs event-present rate + lift + sample sizes. It is a
+  **validation gate, never a feedback loop**: it does not touch a projection. It
+  never returns "validated" (the strongest per-event verdict is `possible_signal`,
+  and the report verdict is `insufficient_history` / `unvalidated`) — promoting a
+  signal is a governance decision made from the report, not by architecture.
+
 ## Limitations
 
 - **Predictive value is UNVALIDATED.** Until enough persisted point-in-time events
-  accumulate, we do not claim Reddit improves Brier or win rate.
+  accumulate, we do not claim Reddit improves Brier or win rate; the evaluation
+  harness enforces this honestly.
 - The provider is disabled by default; when enabled it is subject to Reddit rate
   limits (bounded, cached ~10 min per player).
 - Verification currently uses Statcast velocity + confirmed-lineup facts; a live

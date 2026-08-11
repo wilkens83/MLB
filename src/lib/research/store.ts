@@ -6,6 +6,7 @@
    ========================================================================== */
 
 import type { ContextEvent } from "./types";
+import { SupabaseContextEventStore } from "./supabase-store";
 
 export interface ContextEventStore {
   create(event: ContextEvent): Promise<void>;
@@ -41,8 +42,23 @@ export class InMemoryContextEventStore implements ContextEventStore {
   }
 }
 
-let singleton: InMemoryContextEventStore | null = null;
+let singleton: ContextEventStore | null = null;
 export function getContextEventStore(): ContextEventStore {
-  if (!singleton) singleton = new InMemoryContextEventStore();
+  if (!singleton) singleton = createContextEventStore();
   return singleton;
+}
+
+function createContextEventStore(): ContextEventStore {
+  // Server + service role configured → durable append-only Supabase store;
+  // otherwise the in-memory baseline (tests / keyless local dev). This module is
+  // server-only (the client imports only research TYPES), so the static import
+  // never reaches a browser bundle.
+  if (typeof window === "undefined" && (process.env.SUPABASE_SERVICE_ROLE_KEY ?? "").length > 0) {
+    try {
+      return new SupabaseContextEventStore();
+    } catch {
+      /* fall through to in-memory */
+    }
+  }
+  return new InMemoryContextEventStore();
 }
