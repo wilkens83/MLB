@@ -91,7 +91,7 @@ export interface PitcherGameOutcome {
  * clear on triple/HR, force on walk). All runs treated earned. Returns runs
  * scored on this batter's outcome and mutates `bases`.
  */
-function advance(bases: [boolean, boolean, boolean], outcome: BfOutcome): number {
+export function advance(bases: [boolean, boolean, boolean], outcome: BfOutcome): number {
   let runs = 0;
   const [b1, b2, b3] = bases;
   switch (outcome) {

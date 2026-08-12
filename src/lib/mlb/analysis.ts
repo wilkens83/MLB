@@ -21,6 +21,11 @@ import {
   simulatePlateAppearances, PA_MODELED_PROPS,
 } from "@/lib/prediction/paSim";
 import { scoreDataQuality, buildWarnings } from "@/lib/prediction/quality";
+import {
+  buildPitcherJoint, propSimulationFromJoint, PITCHER_JOINT_PROPS,
+  type PitcherJointSimulation, type PitcherStartStat, type PitcherJointProp,
+  type PitcherUsageProjection, type VolumeEfficiency, type PropCorrelation,
+} from "@/lib/prediction/pitcher";
 import { computeModelEnsemble } from "@/lib/models";
 import type { ModelOutput, EnsembleOutput, ModelDisagreement } from "@/lib/models";
 import type {
@@ -52,11 +57,15 @@ export interface EngineAnalysis {
   simulation: SimulationResult;
   analytics: StatAnalytics;
   recommendation: ReturnType<typeof recommend>;
-  modeledBy: "plate-appearance" | "marginal";
+  modeledBy: "plate-appearance" | "marginal" | "pitcher-joint";
   /** Parallel deterministic model outputs (additive; backward compatible). */
   models: ModelOutput[];
   ensemble: EnsembleOutput;
   modelDisagreement: ModelDisagreement;
+  /** Pitcher usage/exposure projection (present only for pitcher-joint props). */
+  pitcherUsage?: PitcherUsageProjection;
+  /** Volume/efficiency + same-pitcher joint correlations (pitcher-joint props). */
+  pitcherJoint?: { volumeEfficiency: VolumeEfficiency; correlations: PropCorrelation[]; version: string };
 }
 
 export interface OpponentContext {
@@ -203,8 +212,22 @@ export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload
   // Choose the primary simulator: PA engine for batting props it models directly.
   let simulation: SimulationResult = marginalSim;
   let paSim: SimulationResult | undefined;
-  let modeledBy: "plate-appearance" | "marginal" = "marginal";
-  if (prop.category === "batter" && PA_MODELED_PROPS.has(req.propKey) && !req.venueSplit && !req.lastN) {
+  let modeledBy: "plate-appearance" | "marginal" | "pitcher-joint" = "marginal";
+  let pitcherUsage: PitcherUsageProjection | undefined;
+  let pitcherJoint: { volumeEfficiency: VolumeEfficiency; correlations: PropCorrelation[]; version: string } | undefined;
+
+  // Pitcher props share ONE joint start simulation (usage + removal hazard +
+  // correlated events). The market line is applied AFTER, so the same simulation
+  // (memoized per player/season/snapshot) powers all six props unchanged.
+  if (prop.category === "pitcher" && isPitcherJointProp(req.propKey) && !req.venueSplit && !req.lastN) {
+    const joint = getOrBuildPitcherJoint(player.id, season, log);
+    const propSim = propSimulationFromJoint(joint, req.propKey as PitcherJointProp, line, prop.family);
+    simulation = propSim;
+    paSim = propSim; // feeds the ensemble's structural (Model B) slot for pitchers
+    modeledBy = "pitcher-joint";
+    pitcherUsage = joint.usage;
+    pitcherJoint = { volumeEfficiency: joint.volumeEfficiency, correlations: joint.correlations, version: joint.version };
+  } else if (prop.category === "batter" && PA_MODELED_PROPS.has(req.propKey) && !req.venueSplit && !req.lastN) {
     const rates0 = estimatePaRates(log.map((sp) => ({ stat: numify(sp.stat as unknown as Record<string, unknown>) })));
     const offenseMult = pitcherOffenseMultiplierForProp(req.propKey, oppStatcast as StatcastPitcher | null);
     const paAdj = paAdjustmentsFromPitcher(oppStatcast as StatcastPitcher | null, offenseMult);
@@ -280,6 +303,8 @@ export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload
       models: modelEnsemble.models,
       ensemble: modelEnsemble.ensemble,
       modelDisagreement: modelEnsemble.disagreement,
+      pitcherUsage,
+      pitcherJoint,
     },
     statcast: player.isPitcher ? { pitcher: ownStatcast as StatcastPitcher } : { batter: ownStatcast as StatcastBatter, pitcher: oppStatcast as StatcastPitcher },
     opponent,
@@ -290,6 +315,36 @@ export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload
     meta: { propKey: req.propKey, line, sampleSize: series.length, filteredFrom, season },
     lastUpdated,
   };
+}
+
+function isPitcherJointProp(key: string): boolean {
+  return (PITCHER_JOINT_PROPS as readonly string[]).includes(key);
+}
+
+/**
+ * ONE joint pitcher-start simulation per (player, season, game-log snapshot). All
+ * six pitcher props read from it, so the expensive simulation runs once — a new
+ * start (log length change) invalidates the memo. The seed is line-independent by
+ * construction, so a market line never changes the underlying simulation.
+ */
+const pitcherJointCache = new Map<string, PitcherJointSimulation>();
+const PITCHER_JOINT_CACHE_MAX = 200;
+
+function getOrBuildPitcherJoint(playerId: number, season: number, log: { stat: unknown }[]): PitcherJointSimulation {
+  // Only true starts (≥ ~3 IP) inform usage/rates; relief outings would distort them.
+  const starts = log
+    .map((sp) => numify(sp.stat as Record<string, unknown>) as unknown as PitcherStartStat)
+    .filter((s) => (s.outs ?? 0) >= 9 || (s.battersFaced ?? 0) >= 12);
+  const key = `${playerId}:${season}:${starts.length}`;
+  const cached = pitcherJointCache.get(key);
+  if (cached) return cached;
+  const joint = buildPitcherJoint({ starts, seed: `${playerId}:pitcher-joint:${season}:${starts.length}` });
+  if (pitcherJointCache.size >= PITCHER_JOINT_CACHE_MAX) {
+    const first = pitcherJointCache.keys().next().value;
+    if (first !== undefined) pitcherJointCache.delete(first);
+  }
+  pitcherJointCache.set(key, joint);
+  return joint;
 }
 
 /** Coerce a raw stat bag (numbers or numeric strings) into numbers. */

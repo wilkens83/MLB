@@ -16,7 +16,7 @@ export function BreakdownCard({
 }: {
   breakdown: AdjustmentBreakdown;
   unit: string;
-  modeledBy?: "plate-appearance" | "marginal";
+  modeledBy?: "plate-appearance" | "marginal" | "pitcher-joint";
 }) {
   return (
     <Card className="p-5">
