@@ -33,9 +33,11 @@ export interface RankedPicks {
 
 export function rankPicks(candidates: PlayerPickCandidate[], topN = 3): RankedPicks {
   const lineMode = candidates.filter((c) => c.decision !== "projection_only");
+  // Rank projection-only performances by projection strength (strongest first),
+  // falling back to prop key for a deterministic tie-break.
   const projectionOnly = candidates
     .filter((c) => c.decision === "projection_only")
-    .sort((a, b) => a.propKey.localeCompare(b.propKey));
+    .sort((a, b) => (b.projectionScore ?? 0) - (a.projectionScore ?? 0) || a.propKey.localeCompare(b.propKey));
 
   const allProps = [...lineMode].sort(comparePicks);
 
