@@ -224,6 +224,8 @@ export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload
     const propSim = propSimulationFromJoint(joint, req.propKey as PitcherJointProp, line, prop.family);
     simulation = propSim;
     paSim = propSim; // feeds the ensemble's structural (Model B) slot for pitchers
+    // Show the projection the probabilities actually come from (the joint mean).
+    projection.lambda = propSim.mean;
     modeledBy = "pitcher-joint";
     pitcherUsage = joint.usage;
     pitcherJoint = { volumeEfficiency: joint.volumeEfficiency, correlations: joint.correlations, version: joint.version };

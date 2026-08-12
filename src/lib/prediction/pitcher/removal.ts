@@ -37,13 +37,18 @@ export interface RemovalParams {
 }
 
 export const DEFAULT_REMOVAL_PARAMS: Omit<RemovalParams, "targetPitches" | "hardCapPitches" | "maxBattersFaced"> = {
-  intercept: -4.2,
-  perPitchOverSoftCap: 0.09,
-  softCapOffset: 20,
-  perRun: 0.35,
-  perBaserunner: 0.15,
-  perTtoOver2: 0.55,
-  perOutAfter15: 0.06,
+  // Calibrated so a healthy starter (target ~90 pitches) goes ~6 IP: near-zero
+  // base hazard (per-BF hazard compounds over ~25 batters, so the intercept must
+  // stay small) with a steep pitch-count ramp near the budget. Performance and
+  // times-through-order ADD to the hazard but never dominate a fresh outing —
+  // managers do not pull a starter for a lone baserunner in the 3rd.
+  intercept: -6.5,
+  perPitchOverSoftCap: 0.28,
+  softCapOffset: 12, // soft cap = target - 12
+  perRun: 0.15,
+  perBaserunner: 0.03,
+  perTtoOver2: 0.4,
+  perOutAfter15: 0.0,
 };
 
 function sigmoid(x: number): number {
@@ -78,7 +83,7 @@ export function removalHazard(
 export function buildRemovalParams(targetPitches: number, maxBattersFaced = 34): RemovalParams {
   return {
     targetPitches,
-    hardCapPitches: Math.round(targetPitches + 22),
+    hardCapPitches: Math.round(targetPitches + 25),
     maxBattersFaced,
     ...DEFAULT_REMOVAL_PARAMS,
   };

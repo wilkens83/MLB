@@ -42,7 +42,7 @@ export function battersFacedOf(s: PitcherStartStat): number {
   return outs + onBase;
 }
 
-const PRIOR_BF_STRENGTH = 120; // ≈ 5 starts of batters faced before data dominates
+const PRIOR_BF_STRENGTH = 70; // ≈ 3 starts of batters faced before data dominates
 
 /**
  * Estimate allowed per-BF rates from the pitcher's starts, shrunk toward the
