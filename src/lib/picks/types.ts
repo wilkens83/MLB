@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import type { DisagreementSeverity } from "@/lib/models";
+import type { PitcherUsageProjection, VolumeEfficiency } from "@/lib/prediction/pitcher";
 
 /** Picks-level screening decision. Distinct from the firm calibrated decision on
  *  the Full Analysis page — this is a discovery screen, labeled as such. */
@@ -152,6 +153,10 @@ export interface PlayerPickCandidate {
   /** Projection-quality status + score for props WITHOUT a line (never a pick). */
   projectionStatus?: ProjectionStatus;
   projectionScore?: number;
+  /** Pitcher usage/exposure projection (pitcher joint props only). */
+  pitcherUsage?: PitcherUsageProjection;
+  /** Volume vs efficiency decomposition (pitcher joint props only). */
+  volumeEfficiency?: VolumeEfficiency;
   /** Recent per-game prop values (oldest→newest) for the chart. */
   recentGames?: RecentGame[];
   /** Model context story (park/matchup/form) from the adjustment breakdown. */

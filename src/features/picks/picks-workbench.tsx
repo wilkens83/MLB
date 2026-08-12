@@ -404,6 +404,9 @@ function ExpandedPanel({ candidate: c, generatedAt }: { candidate: PlayerPickCan
         </MiniCard>
       </div>
 
+      {/* Pitcher usage / exposure (volume) — one shared start drives every prop. */}
+      {c.pitcherUsage && <ExpectedUsage candidate={c} />}
+
       {/* Recent / Matchup / Why */}
       <div className="mt-3 grid gap-3 xl:grid-cols-3">
         <RecentPerformance candidate={c} />
@@ -412,6 +415,46 @@ function ExpandedPanel({ candidate: c, generatedAt }: { candidate: PlayerPickCan
       </div>
 
       {hasLine && c.altLines.length > 0 && <AltLines candidate={c} />}
+    </div>
+  );
+}
+
+/** Pitcher expected usage/exposure (volume) + volume vs efficiency split. */
+function ExpectedUsage({ candidate: c }: { candidate: PlayerPickCandidate }) {
+  const u = c.pitcherUsage!;
+  const ve = c.volumeEfficiency;
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-surface-2/40 p-3">
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted">Expected Usage <span className="font-normal text-muted-2">— one simulated start drives every pitcher prop</span></div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div>
+          <div className="mb-1 text-[9px] uppercase text-muted-2">Volume</div>
+          <KV k="Pitches" v={`${Math.round(u.expectedPitches)} (${Math.round(u.pitches.p10)}–${Math.round(u.pitches.p90)})`} />
+          <KV k="Batters faced" v={String(round1(u.expectedBattersFaced))} />
+          <KV k="Outs" v={String(round1(u.expectedOuts))} />
+          <KV k="Innings" v={String(round1(u.expectedInnings))} />
+        </div>
+        <div>
+          <div className="mb-1 text-[9px] uppercase text-muted-2">Depth (P ≥ N IP)</div>
+          <KV k="5+ IP" v={pct(u.inningsExceedance.ip5, 0)} />
+          <KV k="6+ IP" v={pct(u.inningsExceedance.ip6, 0)} />
+          <KV k="7+ IP" v={pct(u.inningsExceedance.ip7, 0)} />
+        </div>
+        <div>
+          <div className="mb-1 text-[9px] uppercase text-muted-2">Removal / Hook</div>
+          <KV k="P(hooked <6 IP)" v={pct(u.removalRisk.pBefore6IP, 0)} vCls={u.removalRisk.pBefore6IP > 0.5 ? "text-[var(--warning)]" : undefined} />
+          <KV k="Mean hook pitch" v={u.removalRisk.meanHookPitchCount ? String(Math.round(u.removalRisk.meanHookPitchCount)) : "—"} />
+        </div>
+        {ve && (
+          <div>
+            <div className="mb-1 text-[9px] uppercase text-muted-2">Efficiency (per BF)</div>
+            <KV k="K / BF" v={pct(ve.rates.kPerBf, 1)} />
+            <KV k="BB / BF" v={pct(ve.rates.bbPerBf, 1)} />
+            <KV k="H / BF" v={pct(ve.rates.hPerBf, 1)} />
+            <KV k="HR / BF" v={pct(ve.rates.hrPerBf, 1)} />
+          </div>
+        )}
+      </div>
     </div>
   );
 }

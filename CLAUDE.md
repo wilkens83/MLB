@@ -301,6 +301,41 @@ namespace and reuses the pure core.
   A market/PrizePicks line is only a threshold for `P(X>line)` — it never modifies a
   projection. Design: `docs/graph-engineering/`.
 
+- **Pitcher joint simulation (`src/lib/prediction/pitcher/`).** The six pitcher
+  props (`strikeouts`, `pitcher_outs`, `earned_runs`, `hits_allowed`,
+  `pitcher_walks`, `home_runs_allowed`) are NOT six independent predictions —
+  they share ONE simulated start, so they are correlated through the pitcher's
+  exposure. **Canonical flow:** pitcher game log → `estimatePitcherRates` (per-BF
+  ALLOWED rates: K/BF, BB/BF, H/BF, HR/BF — each its own process, shrunk to
+  versioned league priors) + `projectWorkloadBudget` (pitch/BF budget from recent
+  starts, explicit fallback priors + provenance) → `runPitcherJointSimulation`
+  (`jointSim.ts`): each batter faced is drawn (`sampleOutcome`) and advanced
+  through the shared bases-state run model (`advance`, reused from
+  `prizepicks/entry/jointSim.ts`), accumulates pitches, then faces a transparent
+  versioned removal/hook hazard (`removal.ts`) — encoding the feedback loop
+  (poor performance → more baserunners/pitches → higher hook risk → fewer future
+  opportunities). Output: per-prop distributions + **retained joint samples** +
+  a `PitcherUsageProjection` (expected pitches/BF/outs/innings, exceedance,
+  removal risk) + `VolumeEfficiency` + pairwise correlations. A market line is
+  applied **AFTER** via `propSimulationFromJoint` (reuses `summarizeSamples`);
+  alternative lines reuse the same samples. **Entry point:** `buildPitcherJoint`.
+  **Invariants (tested):** one simulation per pitcher/game snapshot; market line
+  never changes the projection; alt lines reuse the distribution; a removed
+  pitcher (`live.pitcherActive === false`) accumulates zero future stats and its
+  distribution collapses on the recorded stat; K⊆outs, HR⊆hits, walk≠hit event
+  coherence; deterministic under seed; historical hit rate ≠ model probability.
+  **Integration:** `runAnalysis` uses the memoized joint sim as the primary +
+  structural (Model B) simulator for pitcher props and exposes
+  `analysis.pitcherUsage` / `analysis.pitcherJoint`; Player Picks renders an
+  Expected Usage card + volume/efficiency. Live-ready via `LiveState`
+  conditioning; joint samples + `jointProbBothMore` feed future Lineup Lab
+  correlation. **NOT changed:** model weights/coefficients, Monte-Carlo
+  mechanics, calibration. **Limitations:** run model is a documented
+  simplification (all runs earned, no DP/steals/errors); opponent context is
+  neutral in the `runAnalysis` path (opponent lineup Statcast is not resolved for
+  pitchers there); a formal walk-forward comparison vs the old marginal model
+  requires captured point-in-time history and is not yet run.
+
 Other route-level pieces: `src/lib/mlb/slate.ts` + `/slate` (multi-game daily
 board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
 (team/game markets — NRFI, totals, run line). Design/consolidation docs live in
@@ -316,3 +351,17 @@ board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
 - Charts are client components under `src/components/charts`; theme colors come
   from CSS variables (`var(--brand-500)`, `var(--positive)`, …) defined in
   `globals.css`, never hard-coded hex, so light/dark both work.
+
+## Development workflow (required)
+
+Every non-trivial change follows: **AUDIT → BRANCH → implement one coherent
+phase → TEST → update CLAUDE.md → COMMIT → next phase → final full gates
+(`pnpm lint`/`typecheck`/`test:all`/`build`) → runtime-verify → PR → wait for
+green CI → squash-merge into `main` → post-merge validation → record final
+main SHA.** Do NOT develop on `main`, do NOT merge after every file, and do NOT
+merge red CI. A completed mission ends either **A.** safely merged into `main`
+with green gates, or **B.** explicitly NOT merged with CLAUDE.md documenting why
+and what remains. Never claim "merged" without verifying the actual main SHA.
+CLAUDE.md is living memory: after each validated phase, update it to say what
+exists, where, what is canonical, what must NOT be duplicated, and what is
+unfinished — concise and current, not a diary.

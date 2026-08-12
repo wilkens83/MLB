@@ -362,6 +362,8 @@ function buildCandidate(
     modelProjections,
     projectionStatus: projStatus,
     projectionScore: projScore,
+    pitcherUsage: a?.pitcherUsage,
+    volumeEfficiency: a?.pitcherJoint?.volumeEfficiency,
     recentGames,
     adjustmentFactors,
     statcast: ownStatcast,
