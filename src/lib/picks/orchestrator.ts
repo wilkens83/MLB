@@ -23,7 +23,7 @@ import type { HitRateResult, Window } from "@/lib/analytics/hitRate";
 import type { StatcastBatter, StatcastPitcher } from "@/lib/domain/models";
 import { eligibleProps } from "./eligible";
 import { analyzeAltLines, fragilityProxy } from "./distribution";
-import { decidePick, buildExplanation, DEFAULT_PICKS_POLICY, type PicksPolicy } from "./decide";
+import { decidePick, buildExplanation, projectionStatus, projectionScore, DEFAULT_PICKS_POLICY, type PicksPolicy } from "./decide";
 import { rankPicks } from "./rank";
 import {
   PICKS_POLICY_VERSION,
@@ -91,10 +91,18 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, i: number
   return results;
 }
 
-function findWindow(hitRates: HitRateResult[], w: Window): WindowStat | undefined {
+function stdOf(values: number[]): number | undefined {
+  if (values.length < 2) return undefined;
+  const mean = values.reduce((a, b) => a + b, 0) / values.length;
+  const variance = values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length;
+  return Math.round(Math.sqrt(variance) * 100) / 100;
+}
+
+function findWindow(hitRates: HitRateResult[], w: Window, series: number[]): WindowStat | undefined {
   const r = hitRates.find((h) => h.window === w);
   if (!r) return undefined;
-  return { window: w, average: r.average, median: r.median, hitRate: r.rate, sampleSize: r.games };
+  const slice = w === "season" ? series : series.slice(Math.max(0, series.length - w));
+  return { window: w, average: r.average, median: r.median, hitRate: r.rate, stdDev: stdOf(slice), sampleSize: r.games };
 }
 
 /** Last N games as chart-ready points; `hit` is the preferred-side result vs line. */
@@ -201,14 +209,15 @@ function buildCandidate(
 
   const marketSupported = !!a; // engine produced an analysis ⇒ prop is modelable
   const resolved = true; // orchestrator only analyses after the game resolved
+  const series = a?.analytics.series ?? [];
 
   // Recent windows (line-relative hit rate only meaningful in line mode).
   const recent = a
     ? {
-        l5: findWindow(a.analytics.hitRates, 5),
-        l10: findWindow(a.analytics.hitRates, 10),
-        l20: findWindow(a.analytics.hitRates, 20),
-        season: findWindow(a.analytics.hitRates, "season"),
+        l5: findWindow(a.analytics.hitRates, 5, series),
+        l10: findWindow(a.analytics.hitRates, 10, series),
+        l20: findWindow(a.analytics.hitRates, 20, series),
+        season: findWindow(a.analytics.hitRates, "season", series),
       }
     : {};
   if (!hasLine) {
@@ -219,6 +228,7 @@ function buildCandidate(
   }
 
   const modelBy = (id: "marginal" | "pa" | "baseline") => a?.models.find((m) => m.id === id)?.probOver;
+  const modelProjBy = (id: "marginal" | "pa" | "baseline") => a?.models.find((m) => m.id === id)?.projection;
   const model = {
     marginalProb: modelBy("marginal"),
     paProb: modelBy("pa"),
@@ -229,6 +239,18 @@ function buildCandidate(
     fragility,
     calibration: "raw" as const,
   };
+  const modelProjections = a
+    ? { marginal: modelProjBy("marginal"), pa: modelProjBy("pa"), baseline: modelProjBy("baseline"), ensemble: round2(a.ensemble.projection) }
+    : undefined;
+
+  // Recent-form trend from the analytics engine (line-independent).
+  const trend = a
+    ? {
+        slope: a.analytics.trend.slope,
+        formRatio: a.analytics.trend.formRatio,
+        direction: (a.analytics.trend.formRatio > 1.05 ? "up" : a.analytics.trend.formRatio < 0.95 ? "down" : "flat") as "up" | "down" | "flat",
+      }
+    : undefined;
 
   // Line-mode probabilities (never fabricated for projection-only).
   const probMore = hasLine && a ? a.simulation.probOver : undefined;
@@ -243,7 +265,7 @@ function buildCandidate(
   // Experimental screening score via the EXISTING ranking layer (line mode only).
   let score = 0;
   if (hasLine && a) {
-    const l10rate = findWindow(a.analytics.hitRates, 10)?.hitRate ?? a.simulation.probOver;
+    const l10rate = findWindow(a.analytics.hitRates, 10, series)?.hitRate ?? a.simulation.probOver;
     const evalForRank: CandidateEvaluation = {
       entryId: `${args.playerId}:${args.propKey}`,
       mlbPlayerId: args.playerId,
@@ -257,10 +279,10 @@ function buildCandidate(
       probPush: a.simulation.probPush,
       projectionDiff: projection - args.line!,
       hitRates: {
-        l5: findWindow(a.analytics.hitRates, 5)?.hitRate ?? 0,
-        l10: findWindow(a.analytics.hitRates, 10)?.hitRate ?? 0,
-        l20: findWindow(a.analytics.hitRates, 20)?.hitRate ?? 0,
-        season: findWindow(a.analytics.hitRates, "season")?.hitRate ?? 0,
+        l5: findWindow(a.analytics.hitRates, 5, series)?.hitRate ?? 0,
+        l10: findWindow(a.analytics.hitRates, 10, series)?.hitRate ?? 0,
+        l20: findWindow(a.analytics.hitRates, 20, series)?.hitRate ?? 0,
+        season: findWindow(a.analytics.hitRates, "season", series)?.hitRate ?? 0,
       },
       dataQuality,
       modelAgreement: clamp(1 - Math.abs(a.simulation.probOver - l10rate), 0, 1),
@@ -290,12 +312,20 @@ function buildCandidate(
     fragility,
     disagreement,
     dataQuality,
+    sampleSize: payload.meta.sampleSize,
+    modelProbabilityRange: a?.modelDisagreement.probabilityRange,
     marginalProb: model.marginalProb,
     baselineProb: model.baselineProb,
     paProb: model.paProb,
+    trend,
     context,
     engineWarnings: payload.warnings,
   });
+
+  // Projection-quality status/score (for props WITHOUT a line — never a pick).
+  const projStatusInput = { dataQuality, fragility, disagreement, sampleSize: payload.meta.sampleSize };
+  const projStatus = a ? projectionStatus(projStatusInput) : "limited_data";
+  const projScore = a ? projectionScore(projStatusInput) : 0;
 
   const href =
     `/players/${args.playerId}/analysis?market=${encodeURIComponent(args.propKey)}` +
@@ -327,6 +357,11 @@ function buildCandidate(
     model,
     context,
     sampleSize: payload.meta.sampleSize,
+    distribution: a ? a.simulation.distribution.map((b) => ({ value: b.value, probability: b.probability })) : undefined,
+    trend,
+    modelProjections,
+    projectionStatus: projStatus,
+    projectionScore: projScore,
     recentGames,
     adjustmentFactors,
     statcast: ownStatcast,

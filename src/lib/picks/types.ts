@@ -35,8 +35,17 @@ export interface WindowStat {
   median: number;
   /** HISTORICAL hit rate vs the current line — NOT the model probability. */
   hitRate?: number;
+  /** Standard deviation of the stat over the window (variability). */
+  stdDev?: number;
   sampleSize: number;
 }
+
+/**
+ * Projection-quality status for a prop with NO active market line. It is NOT a
+ * pick and never implies MORE/LESS/edge — it grades how strong/reliable the
+ * projected performance is, deterministically. See `projectionStatus()`.
+ */
+export type ProjectionStatus = "strong" | "favorable" | "neutral" | "volatile" | "limited_data";
 
 /** Alternative-line analysis: SAME distribution, different threshold. */
 export interface AltLineAnalysis {
@@ -134,6 +143,15 @@ export interface PlayerPickCandidate {
 
   /** Sample size (games) behind the projection. */
   sampleSize?: number;
+  /** The model's outcome distribution (pmf/histogram) — line-independent. */
+  distribution?: { value: number; probability: number }[];
+  /** Recent-form trend (OLS slope + EWMA form ratio), from the analytics engine. */
+  trend?: { slope: number; formRatio: number; direction: "up" | "down" | "flat" };
+  /** Per-model projected means (line-independent), for the model-agreement view. */
+  modelProjections?: { marginal?: number; pa?: number; baseline?: number; ensemble?: number };
+  /** Projection-quality status + score for props WITHOUT a line (never a pick). */
+  projectionStatus?: ProjectionStatus;
+  projectionScore?: number;
   /** Recent per-game prop values (oldest→newest) for the chart. */
   recentGames?: RecentGame[];
   /** Model context story (park/matchup/form) from the adjustment breakdown. */

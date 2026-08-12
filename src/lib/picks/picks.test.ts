@@ -8,7 +8,7 @@ import { getProp } from "@/lib/props/catalog";
 import type { AnalysisPayload } from "@/lib/mlb/analysis";
 import type { PrizePicksPlayerResolution } from "@/lib/prizepicks/types";
 
-import { decidePick } from "./decide";
+import { decidePick, buildExplanation, projectionStatus, projectionScore } from "./decide";
 import { rankPicks, comparePicks } from "./rank";
 import { probsFromDistribution, analyzeAltLines, fragilityProxy } from "./distribution";
 import { eligibleProps } from "./eligible";
@@ -80,6 +80,59 @@ describe("decidePick", () => {
   it("critical warning ⇒ UNAVAILABLE", () => {
     const d = decidePick({ ...baseDecide, probMore: 0.7, probLess: 0.3, warnings: [{ code: "post_start", severity: "high" }] });
     expect(d.decision).toBe("unavailable");
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Projection-quality status + score (no line)                                 */
+/* -------------------------------------------------------------------------- */
+
+describe("projectionStatus (deterministic, never a MORE/LESS pick)", () => {
+  it("grades a strong, well-supported projection", () => {
+    expect(projectionStatus({ dataQuality: 90, fragility: "LOW", disagreement: "low", sampleSize: 40 })).toBe("strong");
+  });
+  it("flags volatility when fragile or high disagreement", () => {
+    expect(projectionStatus({ dataQuality: 90, fragility: "HIGH", disagreement: "low", sampleSize: 40 })).toBe("volatile");
+    expect(projectionStatus({ dataQuality: 90, fragility: "LOW", disagreement: "high", sampleSize: 40 })).toBe("volatile");
+  });
+  it("flags limited data on a tiny sample or poor quality", () => {
+    expect(projectionStatus({ dataQuality: 90, fragility: "LOW", disagreement: "low", sampleSize: 3 })).toBe("limited_data");
+    expect(projectionStatus({ dataQuality: 30, fragility: "LOW", disagreement: "low", sampleSize: 40 })).toBe("limited_data");
+  });
+  it("is favorable / neutral in the middle", () => {
+    expect(projectionStatus({ dataQuality: 65, fragility: "MODERATE", disagreement: "low", sampleSize: 20 })).toBe("favorable");
+    expect(projectionStatus({ dataQuality: 50, fragility: "MODERATE", disagreement: "medium", sampleSize: 20 })).toBe("neutral");
+  });
+  it("projectionScore rewards quality + sample + stability", () => {
+    const strong = projectionScore({ dataQuality: 90, fragility: "LOW", disagreement: "low", sampleSize: 40 });
+    const weak = projectionScore({ dataQuality: 45, fragility: "HIGH", disagreement: "high", sampleSize: 6 });
+    expect(strong).toBeGreaterThan(weak);
+  });
+});
+
+describe("buildExplanation is quantitative and mode-aware", () => {
+  it("line mode: states the projection-vs-line gap numerically and never over-claims calibration", () => {
+    const { reasons, risks } = buildExplanation({
+      propLabel: "Strikeouts", line: 5.5, preferredSide: "more", projection: 6.48,
+      probMore: 0.72, probLess: 0.28, recent: {}, fragility: "LOW", disagreement: "low",
+      dataQuality: 73, sampleSize: 20, modelProbabilityRange: 0.05, context: {}, engineWarnings: [],
+    });
+    expect(reasons.some((r) => r.includes("6.48") && r.includes("5.5"))).toBe(true);
+    expect(risks.some((r) => /uncalibrated/i.test(r))).toBe(true);
+  });
+  it("projection-only mode: no MORE/LESS/edge language, projection-focused reasons", () => {
+    const { reasons, risks } = buildExplanation({
+      propLabel: "Strikeouts", projection: 6.48, recent: {}, fragility: "LOW", disagreement: "low",
+      dataQuality: 73, sampleSize: 20, context: {}, engineWarnings: [],
+    });
+    expect(reasons.some((r) => r.includes("6.48"))).toBe(true);
+    // No positive reason may assert a MORE/LESS/edge (the risk note may mention
+    // them only to DISCLAIM that no edge is claimed).
+    const reasonText = reasons.join(" ").toLowerCase();
+    expect(reasonText).not.toContain("more");
+    expect(reasonText).not.toContain("less");
+    expect(reasonText).not.toContain("edge");
+    expect(risks.some((r) => /no market line|no more\/less edge/i.test(r))).toBe(true);
   });
 });
 
@@ -360,7 +413,16 @@ describe("analyzePlayerPicks — orchestration", () => {
       expect(c.probLess).toBeUndefined();
       expect(c.preferredSide).toBeUndefined();
       expect(c.projection).toBeGreaterThan(0); // projection still available
+      // Deep-analysis data IS available without a line (item 6):
+      expect(c.distribution && c.distribution.length).toBeGreaterThan(0);
+      expect(c.modelProjections).toBeDefined();
+      expect(c.projectionStatus).toBeDefined();
+      expect(c.recent.l10?.stdDev !== undefined || c.recent.season?.stdDev !== undefined).toBe(true);
+      expect(c.trend).toBeDefined();
     }
+    // Projection-only props are ranked by projection strength (desc), not alphabetical.
+    const scores = result.projectionOnly.map((c) => c.projectionScore ?? 0);
+    for (let i = 1; i < scores.length; i++) expect(scores[i - 1]).toBeGreaterThanOrEqual(scores[i]);
   });
 
   it("MODE A: an imported line drives a line-mode candidate with both sides + full-analysis link", async () => {

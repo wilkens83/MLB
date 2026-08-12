@@ -89,12 +89,13 @@ export function PicksWorkbench() {
   // top pick, else the strongest analyzed prop.
   const selected = useMemo<PlayerPickCandidate | undefined>(() => {
     if (!data) return undefined;
-    const pool = [...data.allProps];
+    const pool = [...data.allProps, ...data.projectionOnly];
     if (selectedKey) {
       const hit = pool.find((c) => c.propKey === selectedKey);
       if (hit) return hit;
     }
-    return data.topPicks[0] ?? pool.find((c) => c.line !== undefined) ?? pool[0];
+    // Default: the #1 top pick, else the strongest projected performance.
+    return data.topPicks[0] ?? data.allProps[0] ?? data.projectionOnly[0] ?? pool[0];
   }, [data, selectedKey]);
 
   return (
@@ -175,23 +176,25 @@ export function PicksWorkbench() {
               )}
             </section>
 
-            {/* Expanded selected-pick analysis */}
-            {selected && selected.line !== undefined && <ExpandedPanel candidate={selected} generatedAt={data.generatedAt} />}
+            {/* Expanded selected analysis — works for a market pick OR a
+                projection-only performance (line-only fields are hidden). */}
+            {selected && <ExpandedPanel candidate={selected} generatedAt={data.generatedAt} />}
 
-            {/* All props */}
+            {/* PrizePicks opportunities (line-mode props) */}
             {data.allProps.length > 0 && (
               <section>
-                <SectionTitle>All Props</SectionTitle>
-                <p className="-mt-1 mb-2 text-[11px] text-muted">All available props for {data.player.name}</p>
+                <SectionTitle>PrizePicks Opportunities</SectionTitle>
+                <p className="-mt-1 mb-2 text-[11px] text-muted">Props with an imported market line — evaluated MORE vs LESS</p>
                 <AllPropsTable candidates={data.allProps} selectedKey={selected?.propKey} onSelect={setSelectedKey} />
               </section>
             )}
 
-            {/* Projection-only */}
+            {/* Player Performance ranking — works with NO market line */}
             {data.projectionOnly.length > 0 && (
               <section>
-                <SectionTitle>Projection-only props <span className="font-normal text-muted-2">(no active market line)</span></SectionTitle>
-                <ProjectionOnlyTable candidates={data.projectionOnly} />
+                <SectionTitle>Player Performance <span className="font-normal text-muted-2">(projected, no market line)</span></SectionTitle>
+                <p className="-mt-1 mb-2 text-[11px] text-muted">Strongest projected performances — ranked by model evidence, not a betting edge</p>
+                <ProjectionOnlyTable candidates={data.projectionOnly} selectedKey={selected?.propKey} onSelect={setSelectedKey} />
               </section>
             )}
 
@@ -327,13 +330,26 @@ function TopPickCard({ candidate: c, rank, selected, onSelect }: { candidate: Pl
 
 /* ------------------------------- Expanded panel --------------------------- */
 
+const PROJ_STATUS_META: Record<string, { label: string; cls: string }> = {
+  strong: { label: "STRONG PROJECTION", cls: "bg-[var(--positive)]/15 text-[var(--positive)] border-[var(--positive)]/30" },
+  favorable: { label: "FAVORABLE PROFILE", cls: "bg-[var(--information)]/15 text-[var(--information)] border-[var(--information)]/30" },
+  neutral: { label: "NEUTRAL", cls: "bg-surface-2 text-muted border-border" },
+  volatile: { label: "VOLATILE", cls: "bg-[var(--warning)]/15 text-[var(--warning)] border-[var(--warning)]/30" },
+  limited_data: { label: "LIMITED DATA", cls: "bg-surface-2 text-muted-2 border-border" },
+};
+function ProjStatusBadge({ status }: { status?: string }) {
+  const m = PROJ_STATUS_META[status ?? "neutral"] ?? PROJ_STATUS_META.neutral;
+  return <span className={cn("inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold", m.cls)}>{m.label}</span>;
+}
+
 function ExpandedPanel({ candidate: c, generatedAt }: { candidate: PlayerPickCandidate; generatedAt: string }) {
+  const hasLine = c.line !== undefined && c.preferredSide !== undefined;
   return (
     <div className="panel p-4">
       <div className="mb-3 flex items-center gap-2">
-        <span className="text-base font-bold">{c.propLabel} {c.line}</span>
-        <SideBadge side={c.preferredSide} />
-        <span className="ml-auto"><DecisionBadge decision={c.decision} /></span>
+        <span className="text-base font-bold">{c.propLabel}{hasLine ? ` ${c.line}` : ""}</span>
+        {hasLine ? <SideBadge side={c.preferredSide} /> : <span className="text-[11px] text-muted">projected performance · no market line</span>}
+        <span className="ml-auto">{hasLine ? <DecisionBadge decision={c.decision} /> : <ProjStatusBadge status={c.projectionStatus} />}</span>
       </div>
 
       {/* Top metrics row */}
@@ -341,23 +357,41 @@ function ExpandedPanel({ candidate: c, generatedAt }: { candidate: PlayerPickCan
         <MiniCard title="Model Projection">
           <div className="text-3xl font-bold tabular-nums">{c.projection}</div>
           <div className="text-[11px] text-muted">Projected {c.propLabel.toLowerCase()}</div>
+          {c.recent.season?.median !== undefined && <div className="mt-1 text-[10px] text-muted-2">season median {round1(c.recent.season.median)}</div>}
         </MiniCard>
 
-        <MiniCard title="Probability">
-          <div className="flex items-baseline gap-3">
-            <span className="text-2xl font-bold tabular-nums text-[var(--positive)]">{c.probMore !== undefined ? pct(c.probMore, 1) : "—"}</span>
-            <span className="text-2xl font-bold tabular-nums text-[var(--negative)]">{c.probLess !== undefined ? pct(c.probLess, 1) : "—"}</span>
-          </div>
-          <div className="mt-1 flex text-[10px] text-muted"><span className="flex-1">More</span><span>Less</span></div>
-          <ProbBar more={c.probMore ?? 0} />
-          {c.probPush !== undefined && c.probPush > 0 && <div className="mt-1 text-[10px] text-muted-2">Push {pct(c.probPush, 1)}</div>}
-        </MiniCard>
+        {hasLine ? (
+          <MiniCard title="Probability">
+            <div className="flex items-baseline gap-3">
+              <span className="text-2xl font-bold tabular-nums text-[var(--positive)]">{c.probMore !== undefined ? pct(c.probMore, 1) : "—"}</span>
+              <span className="text-2xl font-bold tabular-nums text-[var(--negative)]">{c.probLess !== undefined ? pct(c.probLess, 1) : "—"}</span>
+            </div>
+            <div className="mt-1 flex text-[10px] text-muted"><span className="flex-1">More</span><span>Less</span></div>
+            <ProbBar more={c.probMore ?? 0} />
+            {c.probPush !== undefined && c.probPush > 0 && <div className="mt-1 text-[10px] text-muted-2">Push {pct(c.probPush, 1)}</div>}
+          </MiniCard>
+        ) : (
+          <MiniCard title="Projected Distribution">
+            <ProjectedDistribution candidate={c} />
+          </MiniCard>
+        )}
 
         <MiniCard title="Model Agreement">
-          <AgreementRow label="Marginal" v={c.model.marginalProb} />
-          <AgreementRow label="PA" v={c.model.paProb} />
-          <AgreementRow label="Baseline" v={c.model.baselineProb} />
-          <AgreementRow label="Ensemble" v={c.model.ensembleProb} />
+          {hasLine ? (
+            <>
+              <AgreementRow label="Marginal" v={c.model.marginalProb} />
+              <AgreementRow label="PA" v={c.model.paProb} />
+              <AgreementRow label="Baseline" v={c.model.baselineProb} />
+              <AgreementRow label="Ensemble" v={c.model.ensembleProb} />
+            </>
+          ) : (
+            <>
+              <KV k="Marginal" v={fmtNum(c.modelProjections?.marginal)} />
+              <KV k="PA" v={fmtNum(c.modelProjections?.pa)} />
+              <KV k="Baseline" v={fmtNum(c.modelProjections?.baseline)} />
+              <KV k="Ensemble" v={fmtNum(c.modelProjections?.ensemble)} />
+            </>
+          )}
           <div className="mt-1 text-[10px] text-muted">Disagreement: <span className="capitalize text-foreground">{c.model.disagreement}</span></div>
         </MiniCard>
 
@@ -374,10 +408,33 @@ function ExpandedPanel({ candidate: c, generatedAt }: { candidate: PlayerPickCan
       <div className="mt-3 grid gap-3 xl:grid-cols-3">
         <RecentPerformance candidate={c} />
         <MatchupContext candidate={c} />
-        <WhyThisPick candidate={c} />
+        <WhyThisPick candidate={c} hasLine={hasLine} />
       </div>
 
-      {c.altLines.length > 0 && <AltLines candidate={c} />}
+      {hasLine && c.altLines.length > 0 && <AltLines candidate={c} />}
+    </div>
+  );
+}
+
+/** P(X=k) bars from the model's outcome distribution (line-independent). */
+function ProjectedDistribution({ candidate: c }: { candidate: PlayerPickCandidate }) {
+  const dist = (c.distribution ?? []).filter((d) => d.probability > 0.001).slice(0, 14);
+  if (dist.length === 0) return <div className="text-[11px] text-muted-2">Distribution unavailable.</div>;
+  const max = Math.max(...dist.map((d) => d.probability));
+  return (
+    <div>
+      <div className="flex h-16 items-end gap-0.5">
+        {dist.map((d, i) => (
+          <div key={i} className="group relative flex-1" title={`P(${round1(d.value)}) = ${pct(d.probability, 1)}`}>
+            <div className="w-full rounded-t bg-brand-500/70" style={{ height: `${Math.max(3, Math.round((d.probability / max) * 58))}px` }} />
+          </div>
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[9px] text-muted-2">
+        <span>{round1(dist[0].value)}</span>
+        <span>outcome →</span>
+        <span>{round1(dist[dist.length - 1].value)}</span>
+      </div>
     </div>
   );
 }
@@ -437,6 +494,8 @@ function RecentPerformance({ candidate: c }: { candidate: PlayerPickCandidate })
         <>
           <KV k="Average" v={String(round1(stat.average))} />
           <KV k="Median" v={String(round1(stat.median))} />
+          {stat.stdDev !== undefined && <KV k="Std dev" v={String(round1(stat.stdDev))} />}
+          {c.trend && <KV k="Trend" v={c.trend.direction === "up" ? "▲ trending up" : c.trend.direction === "down" ? "▼ trending down" : "steady"} vCls={c.trend.direction === "up" ? "text-[var(--positive)]" : c.trend.direction === "down" ? "text-[var(--negative)]" : undefined} />}
           {stat.hitRate !== undefined && <KV k={`Hit Rate (${c.preferredSide === "less" ? "less" : "more"})`} v={pct(sideRate(stat.hitRate, c.preferredSide)!, 0)} vCls="text-foreground" />}
         </>
       ) : (
@@ -501,9 +560,9 @@ function MatchupContext({ candidate: c }: { candidate: PlayerPickCandidate }) {
   );
 }
 
-function WhyThisPick({ candidate: c }: { candidate: PlayerPickCandidate }) {
+function WhyThisPick({ candidate: c, hasLine }: { candidate: PlayerPickCandidate; hasLine: boolean }) {
   return (
-    <MiniCard title="Why This Pick?">
+    <MiniCard title={hasLine ? "Why This Pick?" : "Why This Performance?"}>
       {c.reasons.length > 0 && (
         <ul className="space-y-1">
           {c.reasons.map((r, i) => (
@@ -583,28 +642,36 @@ function AllPropsTable({ candidates, selectedKey, onSelect }: { candidates: Play
   );
 }
 
-function ProjectionOnlyTable({ candidates }: { candidates: PlayerPickCandidate[] }) {
+function ProjectionOnlyTable({ candidates, selectedKey, onSelect }: { candidates: PlayerPickCandidate[]; selectedKey?: string; onSelect: (k: string) => void }) {
   return (
     <div className="panel overflow-x-auto">
-      <table className="w-full min-w-[520px] text-xs">
+      <table className="w-full min-w-[680px] text-xs">
         <thead className="border-b border-border text-[10px] uppercase text-muted-2">
-          <tr>{["Prop", "Projection", "L5 avg", "L10 avg", "Data Quality", ""].map((h) => <th key={h} className="px-2.5 py-2 text-left font-medium">{h}</th>)}</tr>
+          <tr>{["Prop", "Projection", "L5 avg", "L10 avg", "Trend", "DQ", "Disagree", "Fragility", "Status", ""].map((h) => <th key={h} className="px-2.5 py-2 text-left font-medium">{h}</th>)}</tr>
         </thead>
         <tbody>
           {candidates.map((c) => (
-            <tr key={c.propKey} className="border-b border-border/60 last:border-0">
+            <tr key={c.propKey} onClick={() => onSelect(c.propKey)} className={cn("cursor-pointer border-b border-border/60 last:border-0 hover:bg-surface-hover", selectedKey === c.propKey && "bg-brand-500/5")}>
               <td className="px-2.5 py-2 font-medium">{c.propLabel}</td>
               <td className="px-2.5 py-2 tabular-nums font-semibold">{c.projection}</td>
               <td className="px-2.5 py-2 tabular-nums text-muted">{c.recent.l5 ? round1(c.recent.l5.average) : "—"}</td>
               <td className="px-2.5 py-2 tabular-nums text-muted">{c.recent.l10 ? round1(c.recent.l10.average) : "—"}</td>
+              <td className="px-2.5 py-2 text-muted">{c.trend ? (c.trend.direction === "up" ? "▲" : c.trend.direction === "down" ? "▼" : "—") : "—"}</td>
               <td className="px-2.5 py-2 tabular-nums">{Math.round(c.model.dataQuality)}</td>
-              <td className="px-2.5 py-2"><a href={c.fullAnalysisHref} className="text-brand-500 hover:underline">Full</a></td>
+              <td className="px-2.5 py-2 capitalize text-muted">{c.model.disagreement}</td>
+              <td className="px-2.5 py-2 capitalize text-muted">{c.model.fragility.toLowerCase()}</td>
+              <td className="px-2.5 py-2"><ProjStatusBadge status={c.projectionStatus} /></td>
+              <td className="px-2.5 py-2"><a href={c.fullAnalysisHref} onClick={(e) => e.stopPropagation()} className="text-brand-500 hover:underline">Full</a></td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
   );
+}
+
+function fmtNum(n?: number): string {
+  return n === undefined ? "—" : String(round1(n));
 }
 
 function MetaChip({ label }: { label: string }) {
