@@ -248,24 +248,33 @@ describe("eligibleProps", () => {
 /** Build a REAL analysis payload deterministically from a synthetic series. */
 function makePayload(propKey: string, series: number[], line: number | undefined, opts: { hasStatcast?: boolean; hasOpponent?: boolean } = {}): AnalysisPayload {
   const prop = getProp(propKey)!;
+  const isPitcher = prop.category === "pitcher";
   const effLine = line ?? prop.defaultLine;
   const seed = `test:${propKey}:${effLine}`;
   const projection = project({ series, family: prop.family });
   const sim = simulate(projection, effLine, { seed });
   const analytics = analyzeStat(series, effLine, "over");
   const ensemble = computeModelEnsemble({ series, family: prop.family, line: effLine, seed, marginalSim: sim, modelVersion: "test" });
-  const dq = scoreDataQuality({ sampleSize: series.length, hasStatcast: opts.hasStatcast ?? true, hasOpponent: opts.hasOpponent ?? false, hasWeather: false, hasLineup: false });
+  const hasStatcast = opts.hasStatcast ?? true;
+  const dq = scoreDataQuality({ sampleSize: series.length, hasStatcast, hasOpponent: opts.hasOpponent ?? false, hasWeather: false, hasLineup: false });
+  const samples = series.map((v, i) => ({ value: v, isHome: i % 2 === 0, opponent: "DET", date: `2026-05-${String(10 + i).padStart(2, "0")}` }));
+  const pitcherStatcast = hasStatcast
+    ? { playerId: 100, season: 2026, kPct: 31, bbPct: 6, whiffPct: 34, availableMetrics: ["kPct", "bbPct", "whiffPct"], fetchedAt: Date.now() }
+    : undefined;
   return {
-    player: { id: 100, name: "Test Player", position: prop.category === "pitcher" ? "P" : "CF", team: "TST" },
-    samples: [],
+    player: { id: 100, name: "Test Player", position: isPitcher ? "P" : "CF", team: "TST", bats: "R", throws: "R" },
+    samples,
     analysis: {
       prop, line: effLine, side: "over", projection, simulation: sim, analytics,
       recommendation: recommend({ sim, sampleSize: series.length }),
       modeledBy: "marginal", models: ensemble.models, ensemble: ensemble.ensemble, modelDisagreement: ensemble.disagreement,
     },
-    statcast: {},
+    statcast: isPitcher ? { pitcher: pitcherStatcast } : {},
     opponent: { opponentTeam: "DET", gamePk: 777, lineupConfirmed: false, starterConfirmed: true },
-    breakdown: null,
+    breakdown: { base: projection.shrunkMean, final: projection.lambda, factors: [
+      { key: "park", label: "Park (Citi Field)", delta: 0.1, multiplier: 0.98, direction: "down" },
+      { key: "form", label: "Recent form", delta: 0.2, multiplier: 1.05, direction: "up" },
+    ] },
     warnings: [],
     dataQuality: dq,
     provenance: { modelVersion: "test", seed, dataTimestamp: Date.now(), sources: [] },
@@ -282,11 +291,21 @@ function fakeResolve(over: Partial<NonNullable<PrizePicksPlayerResolution["chose
   return async () => ({ status: "resolved", candidates: [chosen], chosen, reason: "test" });
 }
 
+/** Offline game-detail resolver — keeps the orchestrator off the network in tests. */
+const fakeGame: NonNullable<PicksDeps["getGame"]> = async () => ({
+  gamePk: 777, opponentName: "New York Mets", venueName: "Citi Field", gameStartTime: "2026-05-19T23:10:00Z", homeAway: "away",
+});
+
+/** Build test deps with an offline game resolver. */
+function D(analyze: PicksDeps["analyze"], resolveOver: Partial<NonNullable<PrizePicksPlayerResolution["chosen"]>> = {}): PicksDeps {
+  return { analyze, resolve: fakeResolve(resolveOver), getGame: fakeGame };
+}
+
 describe("analyzePlayerPicks — orchestration", () => {
   it("returns 'no scheduled game' without fabricating an opponent", async () => {
     const result = await analyzePlayerPicks(
       { playerId: 100 },
-      { resolve: fakeResolve({ gamePk: undefined }), analyze: (async () => makePayload("strikeouts", [7], 6.5)) as never },
+      D((async () => makePayload("strikeouts", [7], 6.5)) as never, { gamePk: undefined }),
     );
     expect(result.game.resolved).toBe(false);
     expect(result.game.reason).toContain("No scheduled MLB game");
@@ -299,15 +318,39 @@ describe("analyzePlayerPicks — orchestration", () => {
       analyzed.push(req.propKey);
       return makePayload(req.propKey, [7, 8, 6, 9, 7, 8], req.line);
     }) as never;
-    const result = await analyzePlayerPicks({ playerId: 100 }, { resolve: fakeResolve(), analyze });
+    const result = await analyzePlayerPicks({ playerId: 100 }, D(analyze));
     expect(analyzed).toContain("strikeouts");
     expect(analyzed).not.toContain("home_runs");
     expect(result.allProps.concat(result.projectionOnly).every((c) => c.category === "pitcher")).toBe(true);
   });
 
+  it("resolves real game details (venue/opponent/home-away) and exposes an honest status summary", async () => {
+    const analyze = (async (req: { propKey: string; line?: number }) => makePayload(req.propKey, [7, 8, 6, 9, 7, 8], req.line)) as never;
+    const result = await analyzePlayerPicks({ playerId: 100, lines: [{ marketKey: "strikeouts", line: 4.5 }] }, D(analyze));
+    expect(result.game.venueName).toBe("Citi Field");
+    expect(result.game.opponentName).toBe("New York Mets");
+    expect(result.game.homeAway).toBe("away");
+    expect(result.player.throws).toBe("R");
+    const s = result.status;
+    expect(s.qualified + s.watch + s.rejected + s.unavailable + s.projectionOnly).toBe(
+      result.allProps.length + result.projectionOnly.length,
+    );
+  });
+
+  it("exposes real recent games, adjustment factors and Statcast metrics (never fabricated)", async () => {
+    const analyze = (async (req: { propKey: string; line?: number }) => makePayload(req.propKey, [9, 10, 8, 11, 9, 10, 9, 8], req.line)) as never;
+    const result = await analyzePlayerPicks({ playerId: 100, lines: [{ marketKey: "strikeouts", line: 5.5 }] }, D(analyze));
+    const k = result.allProps.find((c) => c.propKey === "strikeouts")!;
+    expect(k.recentGames && k.recentGames.length).toBeGreaterThan(0);
+    expect(k.recentGames!.every((g) => typeof g.hit === "boolean")).toBe(true); // line mode ⇒ hit defined
+    expect(k.adjustmentFactors!.some((f) => f.key === "park")).toBe(true);
+    expect(k.statcast!.some((m) => m.key === "kPct")).toBe(true);
+    expect(k.sampleSize).toBe(8);
+  });
+
   it("MODE B: with no imported line every prop is projection_only (no fabricated pick)", async () => {
     const analyze = (async (req: { propKey: string; line?: number }) => makePayload(req.propKey, [7, 8, 6, 9, 7], req.line)) as never;
-    const result = await analyzePlayerPicks({ playerId: 100 }, { resolve: fakeResolve(), analyze });
+    const result = await analyzePlayerPicks({ playerId: 100 }, D(analyze));
     expect(result.topPicks).toHaveLength(0);
     expect(result.noStrongPick).toBe(true);
     expect(result.projectionOnly.length).toBeGreaterThan(0);
@@ -324,7 +367,7 @@ describe("analyzePlayerPicks — orchestration", () => {
     const analyze = (async (req: { propKey: string; line?: number }) => makePayload(req.propKey, [9, 10, 8, 11, 9, 10, 9, 8], req.line)) as never;
     const result = await analyzePlayerPicks(
       { playerId: 100, lines: [{ marketKey: "strikeouts", line: 5.5 }] },
-      { resolve: fakeResolve(), analyze },
+      D(analyze),
     );
     const k = result.allProps.find((c) => c.propKey === "strikeouts")!;
     expect(k.line).toBe(5.5);
@@ -339,7 +382,7 @@ describe("analyzePlayerPicks — orchestration", () => {
     const analyze = (async (req: { propKey: string; line?: number }) => makePayload(req.propKey, [9, 10, 8, 11, 9, 10], req.line)) as never;
     const result = await analyzePlayerPicks(
       { playerId: 100, lines: [{ marketKey: "strikeouts", line: 5.5 }] },
-      { resolve: fakeResolve(), analyze },
+      D(analyze),
     );
     const k = result.allProps.find((c) => c.propKey === "strikeouts")!;
     // recent.l10.hitRate is a HISTORICAL rate; probMore is the model probability — distinct fields.
@@ -352,7 +395,7 @@ describe("analyzePlayerPicks — orchestration", () => {
     const analyze = (async (req: { propKey: string; line?: number }) => makePayload(req.propKey, [7, 8, 6, 9, 7, 8, 7], req.line)) as never;
     const result = await analyzePlayerPicks(
       { playerId: 100, lines: [{ marketKey: "strikeouts", line: 6.5, alternativeLines: [{ line: 4.5 }, { line: 8.5 }] }] },
-      { resolve: fakeResolve(), analyze },
+      D(analyze),
     );
     const k = result.allProps.find((c) => c.propKey === "strikeouts")!;
     expect(k.altLines.length).toBe(3); // primary + 2 alternatives
@@ -364,8 +407,8 @@ describe("analyzePlayerPicks — orchestration", () => {
   it("is deterministic — identical inputs produce identical rankings", async () => {
     const analyze = (async (req: { propKey: string; line?: number }) => makePayload(req.propKey, [8, 9, 7, 10, 8, 9, 8], req.line)) as never;
     const lines = [{ marketKey: "strikeouts", line: 6.5 }, { marketKey: "hits_allowed", line: 5.5 }];
-    const r1 = await analyzePlayerPicks({ playerId: 100, lines }, { resolve: fakeResolve(), analyze });
-    const r2 = await analyzePlayerPicks({ playerId: 100, lines }, { resolve: fakeResolve(), analyze });
+    const r1 = await analyzePlayerPicks({ playerId: 100, lines }, D(analyze));
+    const r2 = await analyzePlayerPicks({ playerId: 100, lines }, D(analyze));
     expect(r1.allProps.map((c) => `${c.propKey}:${c.decision}:${c.score}`)).toEqual(
       r2.allProps.map((c) => `${c.propKey}:${c.decision}:${c.score}`),
     );
@@ -376,7 +419,7 @@ describe("analyzePlayerPicks — orchestration", () => {
       if (req.propKey === "earned_runs") throw new Error("boom");
       return makePayload(req.propKey, [7, 8, 6, 9, 7], req.line);
     }) as never;
-    const result = await analyzePlayerPicks({ playerId: 100 }, { resolve: fakeResolve(), analyze });
+    const result = await analyzePlayerPicks({ playerId: 100 }, D(analyze));
     const er = result.allProps.concat(result.projectionOnly).find((c) => c.propKey === "earned_runs")!;
     expect(er.decision).toBe("unavailable");
   });
