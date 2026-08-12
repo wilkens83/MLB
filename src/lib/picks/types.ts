@@ -69,6 +69,36 @@ export interface PickContext {
   homeAway?: "home" | "away";
   lineupConfirmed?: boolean;
   starterConfirmed?: boolean;
+  /** Player handedness (bats for a hitter, throws for a pitcher). */
+  bats?: string;
+  throws?: string;
+}
+
+/** One recent game's prop value (for the recent-performance chart). `hit` is the
+ *  line-relative result on the preferred side — only meaningful in line mode. */
+export interface RecentGame {
+  value: number;
+  date?: string;
+  opponent?: string;
+  isHome?: boolean;
+  hit?: boolean;
+}
+
+/** A named model context factor (park / matchup / form) with its multiplier. */
+export interface AdjustmentFactorView {
+  key: string;
+  label: string;
+  multiplier: number;
+  direction: "up" | "down" | "neutral";
+}
+
+/** A real, available metric surfaced for the matchup panel (never fabricated). */
+export interface StatMetric {
+  key: string;
+  label: string;
+  value: number;
+  /** "pct" formats as a percentage; otherwise a raw number. */
+  unit?: "pct" | "num";
 }
 
 /** One analyzed prop for the selected player. */
@@ -102,6 +132,17 @@ export interface PlayerPickCandidate {
   model: PickModelEvidence;
   context: PickContext;
 
+  /** Sample size (games) behind the projection. */
+  sampleSize?: number;
+  /** Recent per-game prop values (oldest→newest) for the chart. */
+  recentGames?: RecentGame[];
+  /** Model context story (park/matchup/form) from the adjustment breakdown. */
+  adjustmentFactors?: AdjustmentFactorView[];
+  /** The player's own real Statcast metrics (available metrics only). */
+  statcast?: StatMetric[];
+  /** Opposing starter's Statcast metrics (batters only; available metrics only). */
+  opponentStatcast?: StatMetric[];
+
   altLines: AltLineAnalysis[];
 
   decision: PickDecision;
@@ -123,14 +164,27 @@ export interface PicksPlayer {
   teamId?: number;
   position?: string;
   isPitcher: boolean;
+  bats?: string;
+  throws?: string;
 }
 
 export interface PicksGame {
   gamePk?: number;
   opponentName?: string;
   gameStartTime?: string;
+  venueName?: string;
+  homeAway?: "home" | "away";
   resolved: boolean;
   reason?: string;
+}
+
+/** Honest player-level summary — decision-state counts, never a fabricated grade. */
+export interface PicksStatus {
+  qualified: number;
+  watch: number;
+  rejected: number;
+  unavailable: number;
+  projectionOnly: number;
 }
 
 export interface PlayerPicksResult {
@@ -143,6 +197,8 @@ export interface PlayerPicksResult {
   /** Props with no active line — projection shown, never a fabricated pick. */
   projectionOnly: PlayerPickCandidate[];
   noStrongPick: boolean;
+  /** Honest decision-state counts for the header summary (no letter grade). */
+  status: PicksStatus;
   generatedAt: string;
   provenance: {
     modelVersion: string;
