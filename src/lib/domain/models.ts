@@ -173,6 +173,7 @@ export type WarningCode =
   | "unconfirmed_lineup"
   | "missing_statcast"
   | "uncertain_starter"
+  | "role_mismatch"
   | "missing_weather"
   | "model_disagreement"
   | "manual_odds"

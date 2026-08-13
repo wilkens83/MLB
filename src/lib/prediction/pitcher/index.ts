@@ -16,7 +16,7 @@ export { estimatePitcherRates, adjustPitcherRates, normalizeRates, ratesPerBf, b
 export { projectWorkloadBudget, WORKLOAD_PRIORS, type WorkloadBudget } from "./workload";
 export { removalHazard, buildRemovalParams, DEFAULT_REMOVAL_PARAMS, REMOVAL_MODEL_VERSION, type RemovalState, type RemovalParams } from "./removal";
 export {
-  runPitcherJointSimulation, simulatePitcherStart, PITCHER_SIM_ITERATIONS, type LiveState, type PitcherJointInput,
+  runPitcherJointSimulation, simulatePitcherStart, PITCHER_SIM_ITERATIONS, MAX_START_OUTS, type LiveState, type PitcherJointInput,
 } from "./jointSim";
 export { propSimulationFromJoint, jointCorrelation, jointProbBothMore } from "./props";
 

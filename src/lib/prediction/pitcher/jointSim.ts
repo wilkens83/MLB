@@ -24,6 +24,15 @@ import {
 
 const BATTERS_PER_TIME_THROUGH = 9;
 
+/**
+ * Hard structural ceiling on outs a STARTER can record in one game: a complete
+ * nine-inning game is 27 outs. This is a baseball invariant, not a tuned
+ * parameter — no starter records more than 27 outs (modern extra-inning starts
+ * are effectively extinct). Without it the removal hazard's tail can run an
+ * outing past 9 IP, inflating pitcher_outs / innings exceedance in the far tail.
+ */
+export const MAX_START_OUTS = 27;
+
 /** Pitches thrown for one batter — event-dependent, jittered around the mean. */
 function pitchesForBatter(outcome: BfOutcome, meanPerBf: number, rng: Rng): number {
   // Strikeouts/walks run deep counts; quick outs are cheap. Multipliers around 1.
@@ -95,6 +104,10 @@ export function simulatePitcherStart(
       case "hr": o.hits_allowed++; o.home_runs_allowed++; o.earned_runs += advance(bases, outcome); break;
     }
     o.timesThroughOrder = Math.floor((o.battersFaced - 1) / BATTERS_PER_TIME_THROUGH) + 1;
+
+    // Structural ceiling: a starter's outing ends at a complete game (27 outs).
+    // Enforced before the removal hazard so the tail can never exceed 9 IP.
+    if (o.outs >= MAX_START_OUTS) { o.removedReason = "completed"; break; }
 
     const baserunners = (bases[0] ? 1 : 0) + (bases[1] ? 1 : 0) + (bases[2] ? 1 : 0);
     const { hazard, reason } = removalHazard(

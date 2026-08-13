@@ -2,7 +2,7 @@ import { describe, it, expect } from "bun:test";
 import {
   estimatePitcherRates, adjustPitcherRates, ratesPerBf, battersFacedOf, normalizeRates,
   projectWorkloadBudget, removalHazard, buildRemovalParams,
-  simulatePitcherStart, buildPitcherJoint,
+  simulatePitcherStart, buildPitcherJoint, MAX_START_OUTS,
   propSimulationFromJoint, jointCorrelation, jointProbBothMore,
   type PitcherStartStat, type PitcherRates, type LiveState,
 } from "./index";
@@ -121,6 +121,23 @@ describe("simulatePitcherStart — coherent events & invariants", () => {
     expect(a).toEqual(b);
   });
 
+  it("never exceeds the complete-game ceiling (27 outs / 9 IP) even for an elite high-budget starter", () => {
+    // Dominant, low-contact pitcher with an inflated pitch budget: without the
+    // structural cap the removal-hazard tail runs past 9 IP (observed up to 33
+    // outs / 11 IP). A starter can never record more than 27 outs.
+    const elite: PitcherRates = {
+      k: 0.38, bb: 0.03, hbp: 0.005, single: 0.09, double: 0.02, triple: 0.002, hr: 0.015, out: 0.458,
+    };
+    const bigWorkload = projectWorkloadBudget(
+      starts({ numberOfPitches: 112, outs: 24, battersFaced: 28, hits: 4, baseOnBalls: 1, strikeOuts: 10, homeRuns: 0 }),
+    );
+    const bigParams = buildRemovalParams(bigWorkload.targetPitches);
+    for (let s = 0; s < 500; s++) {
+      const o = simulatePitcherStart(elite, bigWorkload, bigParams, mulberry32(s * 7 + 1));
+      expect(o.outs).toBeLessThanOrEqual(MAX_START_OUTS);
+    }
+  });
+
   it("REMOVED pitcher accumulates nothing further", () => {
     const live: LiveState = {
       pitcherActive: false, pitches: 88, battersFaced: 22, outs: 16,
@@ -160,6 +177,8 @@ describe("runPitcherJointSimulation", () => {
     expect(joint.usage.expectedInnings).toBeLessThan(9);
     expect(joint.usage.outsExceedance.p18).toBeGreaterThanOrEqual(0);
     expect(joint.usage.outsExceedance.p18).toBeLessThanOrEqual(1);
+    // No simulated start may exceed the complete-game ceiling.
+    expect(Math.max(...joint.samples.pitcher_outs)).toBeLessThanOrEqual(MAX_START_OUTS);
   });
 
   it("strikeouts & outs are positively correlated (same outing drives both)", () => {
