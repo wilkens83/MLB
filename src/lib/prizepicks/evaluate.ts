@@ -10,7 +10,8 @@
 import { runAnalysis } from "@/lib/mlb/analysis";
 import { round, clamp } from "@/lib/utils";
 import { marketByCanonical } from "./market-map";
-import type { CandidateEvaluation } from "./types";
+import type { CandidateEvaluation, ProjectionType } from "./types";
+import type { DistributionBucket } from "@/lib/prediction/simulate";
 
 export interface EvaluateInput {
   entryId: string;
@@ -19,6 +20,29 @@ export interface EvaluateInput {
   line: number;
   gamePk?: number;
   pregame?: boolean;
+  /**
+   * Alternative thresholds (goblin/demon) for the SAME market. Scored against the
+   * SAME projection distribution — only the threshold moves, never the model.
+   */
+  alternativeLines?: { line: number; projectionType: ProjectionType }[];
+}
+
+/**
+ * Directional probabilities for a threshold read from the model's already-computed
+ * distribution. Pure — it reads engine output, it does not re-model anything.
+ * P(more) = mass strictly above the line; P(less) = mass strictly below.
+ */
+export function probsFromDistribution(distribution: DistributionBucket[], line: number): { probMore: number; probLess: number } {
+  let total = 0;
+  let more = 0;
+  let less = 0;
+  for (const b of distribution) {
+    total += b.probability;
+    if (b.value > line) more += b.probability;
+    else if (b.value < line) less += b.probability;
+  }
+  if (total <= 0) return { probMore: 0, probLess: 0 };
+  return { probMore: clamp(more / total, 0, 1), probLess: clamp(less / total, 0, 1) };
 }
 
 export async function evaluateEntry(input: EvaluateInput): Promise<CandidateEvaluation | null> {
@@ -57,6 +81,19 @@ export async function evaluateEntry(input: EvaluateInput): Promise<CandidateEval
     probLess: round(probLess, 4),
     probPush: round(probPush, 4),
     projectionDiff: round(a.projection.lambda - input.line, 2),
+    // Same distribution, different thresholds — goblin/demon variants scored
+    // without re-modeling. Absent when the screenshot had no alternatives.
+    alternativeLines: input.alternativeLines?.length
+      ? input.alternativeLines.map((alt) => {
+          const p = probsFromDistribution(a.simulation.distribution, alt.line);
+          return {
+            line: alt.line,
+            projectionType: alt.projectionType,
+            probMore: round(p.probMore, 4),
+            probLess: round(p.probLess, 4),
+          };
+        })
+      : undefined,
     hitRates: {
       l5: round(hr("5"), 3),
       l10: round(hr("10"), 3),

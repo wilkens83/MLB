@@ -91,6 +91,21 @@ export function CandidateCard({
                 {entry.projectionType}
               </span>
             </div>
+            {entry.alternativeLines && entry.alternativeLines.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {entry.alternativeLines.map((a, i) => (
+                  <span key={i} className={cn("rounded border px-1 text-[9px] font-medium capitalize tabular-nums", PROJ_TYPE[a.projectionType])}>
+                    {a.projectionType} {a.line}
+                  </span>
+                ))}
+              </div>
+            )}
+            {(entry.sourceAverageL5 !== undefined || (entry.sourceHistory && entry.sourceHistory.length > 0)) && (
+              <div className="mt-1 text-[9px] text-muted-2">
+                {entry.sourceHistory && entry.sourceHistory.length > 0 && <>PP L5: {entry.sourceHistory.map((h) => h.value).join(", ")}</>}
+                {entry.sourceAverageL5 !== undefined && <>{entry.sourceHistory && entry.sourceHistory.length > 0 ? " · " : "PP "}avg {entry.sourceAverageL5}</>}
+              </div>
+            )}
           </div>
 
           <div className="rounded-lg border border-brand-500/25 bg-brand-500/5 p-2.5">
@@ -110,6 +125,16 @@ export function CandidateCard({
                   <span className={cn(dir === "less" && "text-[var(--negative)]")}>L {pct(evaluation.probLess, 0)}</span>
                   {evaluation.probPush > 0 && <span className="text-muted-2"> / P {pct(evaluation.probPush, 0)}</span>}
                 </div>
+                {evaluation.alternativeLines && evaluation.alternativeLines.length > 0 && (
+                  <div className="mt-1 space-y-0.5 border-t border-brand-500/15 pt-1 text-[10px] tabular-nums text-muted">
+                    {evaluation.alternativeLines.map((a, i) => (
+                      <div key={i} className="flex items-center justify-between">
+                        <span className="capitalize">{a.projectionType} {a.line}</span>
+                        <span>M {pct(a.probMore, 0)} / L {pct(a.probLess, 0)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             ) : (
               <div className="mt-1 text-sm text-muted-2">{loading ? "analyzing…" : "run analytics"}</div>

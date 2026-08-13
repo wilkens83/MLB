@@ -320,7 +320,25 @@ function makePayload(propKey: string, series: number[], line: number | undefined
     analysis: {
       prop, line: effLine, side: "over", projection, simulation: sim, analytics,
       recommendation: recommend({ sim, sampleSize: series.length }),
-      modeledBy: "marginal", models: ensemble.models, ensemble: ensemble.ensemble, modelDisagreement: ensemble.disagreement,
+      modeledBy: isPitcher ? "pitcher-joint" : "marginal", models: ensemble.models, ensemble: ensemble.ensemble, modelDisagreement: ensemble.disagreement,
+      ...(isPitcher
+        ? {
+            pitcherUsage: {
+              expectedPitches: 92, expectedBattersFaced: 24, expectedOuts: 17, expectedInnings: 5.7,
+              pitches: { mean: 92, median: 92, stdDev: 8, p10: 80, p90: 104 },
+              battersFaced: { mean: 24, median: 24, stdDev: 3, p10: 20, p90: 28 },
+              outs: { mean: 17, median: 17, stdDev: 3, p10: 13, p90: 21 },
+              outsExceedance: { p15: 0.7, p18: 0.4, p21: 0.15 },
+              inningsExceedance: { ip5: 0.7, ip6: 0.4, ip7: 0.15 },
+              removalRisk: { pBefore6IP: 0.55, meanHookPitchCount: 96, hookReason: { pitchCount: 0.4, performance: 0.3, capped: 0.3 } },
+              provenance: { version: "test", startsUsed: 8, hadPitchCounts: true, hadBattersFaced: true, sources: {}, warnings: [], generatedAt: Date.now() },
+            },
+            pitcherJoint: {
+              volumeEfficiency: { expectedBattersFaced: 24, expectedPitches: 92, expectedOuts: 17, rates: { kPerBf: 0.27, bbPerBf: 0.07, hPerBf: 0.22, hrPerBf: 0.03 } },
+              correlations: [], version: "test",
+            },
+          }
+        : {}),
     },
     statcast: isPitcher ? { pitcher: pitcherStatcast } : {},
     opponent: { opponentTeam: "DET", gamePk: 777, lineupConfirmed: false, starterConfirmed: true },
@@ -388,6 +406,15 @@ describe("analyzePlayerPicks — orchestration", () => {
     expect(s.qualified + s.watch + s.rejected + s.unavailable + s.projectionOnly).toBe(
       result.allProps.length + result.projectionOnly.length,
     );
+  });
+
+  it("surfaces pitcher usage + volume/efficiency on pitcher props", async () => {
+    const analyze = (async (req: { propKey: string; line?: number }) => makePayload(req.propKey, [7, 8, 6, 9, 7, 8], req.line)) as never;
+    const result = await analyzePlayerPicks({ playerId: 100, lines: [{ marketKey: "strikeouts", line: 5.5 }] }, D(analyze));
+    const k = result.allProps.find((c) => c.propKey === "strikeouts")!;
+    expect(k.pitcherUsage?.expectedInnings).toBe(5.7);
+    expect(k.pitcherUsage?.removalRisk.pBefore6IP).toBeGreaterThan(0);
+    expect(k.volumeEfficiency?.rates.kPerBf).toBeGreaterThan(0);
   });
 
   it("exposes real recent games, adjustment factors and Statcast metrics (never fabricated)", async () => {
@@ -464,6 +491,22 @@ describe("analyzePlayerPicks — orchestration", () => {
     const low = k.altLines.find((a) => a.line === 4.5)!;
     const high = k.altLines.find((a) => a.line === 8.5)!;
     expect(low.probMore).toBeGreaterThan(high.probMore); // lower threshold ⇒ higher MORE prob
+  });
+
+  it("CONSOLIDATION: a pitcher's imported alt lines reuse the ONE joint distribution + usage (PR#32 × PR#36)", async () => {
+    const analyze = (async (req: { propKey: string; line?: number }) => makePayload(req.propKey, [7, 8, 6, 9, 7, 8, 7], req.line)) as never;
+    const result = await analyzePlayerPicks(
+      { playerId: 100, lines: [{ marketKey: "strikeouts", line: 6.5, alternativeLines: [{ line: 4.5 }, { line: 8.5 }] }] },
+      D(analyze),
+    );
+    const k = result.allProps.find((c) => c.propKey === "strikeouts")!;
+    // #32 alt lines: goblin/standard/demon are the same market at 3 thresholds,
+    // all read from the SAME distribution (lower line ⇒ higher MORE prob).
+    expect(k.altLines.length).toBe(3);
+    expect(k.altLines.find((a) => a.line === 4.5)!.probMore).toBeGreaterThan(k.altLines.find((a) => a.line === 8.5)!.probMore);
+    // #36 pitcher usage/volume-efficiency coexists on the same pitcher prop.
+    expect(k.pitcherUsage?.expectedInnings).toBeGreaterThan(0);
+    expect(k.volumeEfficiency?.rates.kPerBf).toBeGreaterThan(0);
   });
 
   it("is deterministic — identical inputs produce identical rankings", async () => {
