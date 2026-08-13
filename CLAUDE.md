@@ -256,6 +256,32 @@ namespace and reuses the pure core.
   Design docs: `docs/DECISION_ENGINE_REQUIREMENTS.md`,
   `docs/SCIENTIFIC_QUALITY_PROGRESS.md`.
 
+- **Pick Selector (`src/lib/picks/selector.ts`, `/api/pick-selector`,
+  `/pick-selector`).** The board-wide ranked SELECTION layer — a **pure
+  composition** over the firm decision engine, NOT a second analytics path: it
+  re-projects/re-simulates nothing. `fromDecisionResult` adapts each per-leg
+  `DecisionResult` (from `decideEntryFromBoard`) into a `SelectorCandidate`;
+  `runPickSelector` scores every candidate (`scorePick`, versioned
+  `SELECTOR_SCORE_VERSION` weighted composite of conviction=`(P−0.5)/0.25`,
+  data quality, confidence, lineup certainty, minus uncertainty and conflict
+  penalties → 0–100), grades **A+/A/B/C/PASS**, and groups
+  **TOP/STRONG/PLAYABLE/WATCH/PASS** with a KPI summary (tier counts, average
+  edge over the 0.5 pick'em breakeven, market breakdown). **Non-negotiables it
+  enforces:** (1) **PASS is first-class** — an unmet filter (min prob/edge/data
+  quality, max uncertainty, require-lineup, max-same-player/game applied to the
+  RANKED order), a below-threshold score, or a firm `NO_BET`/`UNAVAILABLE` all
+  resolve to PASS with a human-readable reason; it never invents strength to
+  fill a ticket. (2) It **never overrides a veto** — a firm block caps the grade
+  at PASS, and analytical GRADE (pick quality) stays distinct from firm DECISION
+  (`betEligible` is true only for `BET_MORE`/`BET_LESS`). (3) **Same-player/
+  same-game props are never assumed independent** — conflicts are surfaced from
+  the entry engine's `detectContradiction` (market relationships) before ranking.
+  Pure + deterministic + tested (`selector.test.ts`). The `/pick-selector` page
+  reads the imported board (localStorage, shared with `/decisions`), POSTs to the
+  API, and renders filters + KPI cards + grouped ranked list + a per-pick detail
+  (quality gates, conflicts, reasons). Missing scores degrade honestly (unknown
+  data quality/fragility → 0.5 neutral, never fabricated 0).
+
 - **Scientific persistence (`supabase/migrations/`, `src/lib/supabase/`).** The
   connected `mlb-edge` Supabase project (Postgres 17) holds the append-only,
   point-in-time scientific record: twelve tables (`raw_observations`,

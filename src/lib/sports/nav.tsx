@@ -54,6 +54,7 @@ const MLB_UI: SportUi = {
       title: "Research",
       items: [
         { href: "/picks", label: "Player Picks", icon: Target, match: (p) => p.startsWith("/picks") },
+        { href: "/pick-selector", label: "Pick Selector", icon: Boxes, match: (p) => p.startsWith("/pick-selector") },
         { href: "/chat", label: "AI Data Chat", icon: Sparkles, match: (p) => p.startsWith("/chat") },
         { href: "/decisions", label: "Decision Center", icon: Gavel, match: (p) => p.startsWith("/decisions") },
         { href: "/prizepicks-board", label: "PrizePicks Board", icon: ClipboardList, match: (p) => p.startsWith("/prizepicks-board") },
