@@ -57,6 +57,39 @@ describe("correlation + contradiction", () => {
     expect(r.contradictions[0].note).toMatch(/negatively related|opposite/i);
   });
 
+  // Permanent regression (Pick Selection Engine spec §17): stacking MORE Hits +
+  // MORE K + MORE Walks on the SAME pitcher must NOT be treated as three
+  // independent opportunities. Getting hit hard helps Hits-More but raises the
+  // pitch count and hook risk, shortening the outing and suppressing K/Walk
+  // accumulation — a shared-usage / early-exit conflict. The joint sim must
+  // therefore (a) flag the K↔Hits contradiction, (b) show negative K↔Hits
+  // correlation, and (c) price P(all win) BELOW the naive product of marginals.
+  test("same-pitcher More Hits + More K + More Walks is correlated, not independent (early-exit conflict)", () => {
+    const legs = [
+      pitcherLeg("h", "hits_allowed", 5.5, "more"),
+      pitcherLeg("k", "strikeouts", 5.5, "more"),
+      pitcherLeg("w", "pitcher_walks", 1.5, "more"),
+    ];
+    const r = analyzeEntry({ legs, entryType: "power", iterations: 8000, seed: "early-exit" });
+
+    // (a) The K↔Hits shared-usage contradiction is surfaced.
+    expect(r.contradictions.length).toBeGreaterThanOrEqual(1);
+    expect(r.contradictions.some((c) => /negatively related|opposite/i.test(c.note))).toBe(true);
+
+    // (b) K and Hits allowed are negatively related in the JOINT samples.
+    const kh = r.correlations.find(
+      (p) => (p.aLabel.includes("strikeouts") && p.bLabel.includes("hits_allowed")) ||
+             (p.aLabel.includes("hits_allowed") && p.bLabel.includes("strikeouts")),
+    );
+    expect(kh).toBeDefined();
+    expect(kh!.correlation).toBeLessThan(0);
+
+    // (c) Joint P(all win) is strictly BELOW the independence product — the
+    // legs are NOT independent; naive multiplication would overstate the ticket.
+    const product = r.legs.reduce((acc, l) => acc * l.probWin, 1);
+    expect(r.probAllWin).toBeLessThan(product - 0.005);
+  });
+
   test("different players are (near) independent", () => {
     const legs = [hitterLeg("a", "total_bases", 1.5, 300), hitterLeg("b", "total_bases", 1.5, 301)];
     const r = analyzeEntry({ legs, entryType: "power", iterations: 6000, seed: "s" });
