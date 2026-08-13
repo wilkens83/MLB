@@ -3,6 +3,7 @@ import { project } from "@/lib/prediction/projection";
 import { simulate, recommend, type SimulationResult } from "@/lib/prediction/simulate";
 import { analyzeStat } from "@/lib/analytics/hitRate";
 import { computeModelEnsemble } from "@/lib/models";
+import { classifyPitcherRole, classifyHitterRole } from "@/lib/players/role";
 import { scoreDataQuality } from "@/lib/prediction/quality";
 import { getProp } from "@/lib/props/catalog";
 import type { AnalysisPayload } from "@/lib/mlb/analysis";
@@ -320,7 +321,9 @@ function makePayload(propKey: string, series: number[], line: number | undefined
     analysis: {
       prop, line: effLine, side: "over", projection, simulation: sim, analytics,
       recommendation: recommend({ sim, sampleSize: series.length }),
-      modeledBy: isPitcher ? "pitcher-joint" : "marginal", models: ensemble.models, ensemble: ensemble.ensemble, modelDisagreement: ensemble.disagreement,
+      modeledBy: isPitcher ? "pitcher-joint" : "marginal",
+      role: isPitcher ? classifyPitcherRole({ playerId: 100 }) : classifyHitterRole({}),
+      models: ensemble.models, ensemble: ensemble.ensemble, modelDisagreement: ensemble.disagreement,
       ...(isPitcher
         ? {
             pitcherUsage: {

@@ -27,6 +27,7 @@ import {
   type PitcherUsageProjection, type VolumeEfficiency, type PropCorrelation,
 } from "@/lib/prediction/pitcher";
 import { computeModelEnsemble } from "@/lib/models";
+import { classifyPitcherRole, classifyHitterRole, type RoleResolution } from "@/lib/players/role";
 import type { ModelOutput, EnsembleOutput, ModelDisagreement } from "@/lib/models";
 import type {
   AdjustmentBreakdown, DataQuality, PredictionProvenance, PredictionWarning,
@@ -58,6 +59,8 @@ export interface EngineAnalysis {
   analytics: StatAnalytics;
   recommendation: ReturnType<typeof recommend>;
   modeledBy: "plate-appearance" | "marginal" | "pitcher-joint";
+  /** Today's resolved role (starter/relief/bench/unknown) + start-model applicability. */
+  role: RoleResolution;
   /** Parallel deterministic model outputs (additive; backward compatible). */
   models: ModelOutput[];
   ensemble: EnsembleOutput;
@@ -78,6 +81,8 @@ export interface OpponentContext {
   gamePk?: number;
   lineupConfirmed: boolean;
   starterConfirmed: boolean;
+  /** The analyzed player's OWN team probable-starter id (for role resolution). */
+  ownProbablePitcherId?: number;
 }
 
 export interface AnalysisPayload {
@@ -113,6 +118,7 @@ async function resolveOpponent(teamId: number | undefined): Promise<OpponentCont
     const isAway = g.away.teamId === teamId;
     if (!isHome && !isAway) continue;
     const opp = isHome ? g.away : g.home;
+    const own = isHome ? g.home : g.away;
     return {
       pitcherId: opp.probablePitcherId,
       pitcherName: opp.probablePitcherName,
@@ -122,6 +128,7 @@ async function resolveOpponent(teamId: number | undefined): Promise<OpponentCont
       gamePk: g.gamePk,
       lineupConfirmed: false, // MLB confirms lineups ~1-2h pregame; treated as projected here
       starterConfirmed: opp.probablePitcherId !== undefined,
+      ownProbablePitcherId: own.probablePitcherId,
     };
   }
   return null;
@@ -274,6 +281,17 @@ export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload
     ? Math.abs(recommendation.best.modelProb - recommendation.best.impliedProb)
     : undefined;
 
+  // Resolve today's ROLE explicitly — a rostered pitcher is not necessarily
+  // today's starter, and the joint-START model only applies to a start.
+  const role: RoleResolution = player.isPitcher
+    ? classifyPitcherRole({
+        playerId: player.id,
+        ownProbablePitcherId: opponent?.ownProbablePitcherId,
+        starterConfirmed: opponent?.starterConfirmed ?? false,
+        noGameResolved: !opponent,
+      })
+    : classifyHitterRole({ lineupConfirmed: opponent?.lineupConfirmed ?? false, noGameResolved: !opponent });
+
   const warnings = buildWarnings({
     sampleSize: series.length,
     hasStatcast,
@@ -285,6 +303,12 @@ export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload
     modelDisagreement,
     dataAgeMs: ownStatcast ? Date.now() - ownStatcast.fetchedAt : undefined,
   });
+
+  // Surface a role-mismatch warning when a start-based projection is being
+  // applied to a pitcher who is NOT today's starter — an honest, high-severity flag.
+  if (player.isPitcher && role.role === "RELIEF_PITCHER") {
+    warnings.push({ code: "role_mismatch", message: role.note, severity: "high" });
+  }
 
   const provenance: PredictionProvenance = {
     modelVersion: MODEL_VERSION,
@@ -302,6 +326,7 @@ export async function runAnalysis(req: AnalysisRequest): Promise<AnalysisPayload
     samples,
     analysis: {
       prop, line, side, projection, simulation, analytics, recommendation, modeledBy,
+      role,
       models: modelEnsemble.models,
       ensemble: modelEnsemble.ensemble,
       modelDisagreement: modelEnsemble.disagreement,

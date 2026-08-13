@@ -280,6 +280,21 @@ namespace and reuses the pure core.
   envelope (`src/lib/http/envelope.ts`) — the default payload is unchanged. Design:
   `docs/architecture/`, `docs/WORKFLOWS.md`; audit: `docs/audit/`.
 
+- **Player role (`src/lib/players/role.ts`).** A first-class, typed contract for
+  what a player is doing TODAY, distinct from roster membership: `PlayerRole`
+  (`STARTING_PITCHER`/`RELIEF_PITCHER`/`UNKNOWN_PITCHER_ROLE`/`STARTING_HITTER`/
+  `BENCH`/`UNKNOWN_HITTER_ROLE`) with a `RoleConfidence`
+  (`confirmed`/`probable`/`assumed`/`none`), `isStarter`, and `startModelApplies`.
+  Pure + dependency-free. `classifyPitcherRole` resolves from the analyzed
+  player's OWN-side probable starter (`OpponentContext.ownProbablePitcherId`, from
+  the same `mapGame` call — no new data source): a *different* posted probable ⇒
+  `RELIEF_PITCHER` and the joint-**start** model does not apply; none posted ⇒
+  `UNKNOWN` with the start **assumed and labeled**, never silently asserted.
+  `runAnalysis` sets `analysis.role` on every request and pushes a high-severity
+  `role_mismatch` warning when a start projection is applied to a non-starter.
+  This is structural only — it changes no rates/weights/Monte-Carlo/calibration.
+  Full audit + scorecard: `docs/audit/FULL_PROJECT_RECONSIDERATION.md`.
+
 - **Player Favorites & Following (`src/lib/players/`, `src/features/players/`,
   `/my-players`).** A user-centered personal research space layered on the existing
   Players/Analysis pages — no second player-profile architecture. **Favorites (a

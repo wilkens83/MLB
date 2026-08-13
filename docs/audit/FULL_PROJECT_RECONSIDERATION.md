@@ -93,7 +93,7 @@ simplification worth revisiting.
 |----|------|-----|--------|----------|-------|----------------|
 | F-01 | Pitcher outs exceed complete-game ceiling | **P0** | **FIXED this pass** | Elite high-budget sim produced up to **33 outs / 11 IP**, P(outs>27)=6.7% | `pitcher/jointSim.ts` | `pitcher_outs`, innings exceedance, any prop read past 9 IP |
 | F-02 | Hitter PA opportunity not conditioned on today's lineup slot | P1 | Registered | `expectedPasPerGame` uses the player's own log average (empirically slot-correlated) but does not adjust when today's confirmed slot differs; `simulatePlateAppearances` default 4.2 | `paSim.ts` | all PA-modeled batter props |
-| F-03 | Explicit role is inferred, not a first-class enum | P1 | Registered | `starterConfirmed`/probable-pitcher flags exist; no `STARTING_PITCHER`/`RELIEVER` enum gating the pitcher-joint path | `analysis.ts`, `catalog.ts` | pitcher props for swing/opener roles |
+| F-03 | Explicit role is inferred, not a first-class enum | P1 | **FIXED this pass** | `starterConfirmed` referred to the OPPONENT starter; any analyzed pitcher was implicitly assumed to start | `players/role.ts`, `analysis.ts` | pitcher props; relief/opener/bench cases |
 | F-04 | Run model omits DP / steals / errors; all runs earned | P2 (documented) | Accept | `advance()` header states the simplification; no-error universe ⇒ all runs earned aligns with the *earned*-runs prop target | `entry/jointSim.ts` | `earned_runs` |
 | F-05 | Opponent lineup Statcast neutral on the pitcher path | P2 (documented) | Accept | CLAUDE.md pitcher section documents opponent context is neutral in `runAnalysis` | `analysis.ts` | pitcher props (matchup precision) |
 | F-06 | Historical hit rate visually separable from model probability | P2 | Verified OK | `performance.ts` carries no probability field; UI states "historical only" | `players/performance.ts` | display only |
@@ -153,6 +153,37 @@ weight, or Monte-Carlo mechanic changed.
 
 ---
 
+## 4b. Correction applied this pass — F-03: first-class player role
+
+**The gap.** Role was never represented as a typed contract. `analysis.ts`
+routed on the boolean `player.isPitcher`, and the only "starter" signal
+(`starterConfirmed`) actually described the **opponent's** probable pitcher. As a
+result *any* analyzed pitcher was implicitly assumed to be today's starter, and
+the six-prop joint-**start** simulation was applied to them unconditionally — a
+reliever or a pitcher not starting today would silently receive a full-start
+projection with no flag.
+
+**The fix.** A pure, tested `src/lib/players/role.ts`:
+
+- `PlayerRole` = `STARTING_PITCHER | RELIEF_PITCHER | UNKNOWN_PITCHER_ROLE |
+  STARTING_HITTER | BENCH | UNKNOWN_HITTER_ROLE`, each with a `RoleConfidence`
+  (`confirmed | probable | assumed | none`), `isStarter`, `startModelApplies`,
+  and an honest `note`.
+- `classifyPitcherRole` resolves from the analyzed player's **own-side** probable
+  starter (now captured in `OpponentContext.ownProbablePitcherId` from the same
+  `mapGame` call — no new data source): id match → `STARTING_PITCHER`; a *different*
+  posted probable → `RELIEF_PITCHER` (start model does **not** apply); none posted
+  → `UNKNOWN_PITCHER_ROLE` with the start **assumed and labeled**, never asserted.
+- `runAnalysis` computes `analysis.role` for every request and pushes a
+  high-severity `role_mismatch` warning when a start-based projection is applied
+  to a pitcher who is not today's probable starter.
+
+This is a **structural/representational** change — no rates, weights, or
+Monte-Carlo mechanics — so it carries no calibration risk and needs no
+walk-forward validation to be correct. Tests (`role.test.ts`, 7 cases) encode the
+invariants: a rostered non-starter is relief; an unknown lineup never silently
+becomes "starting."
+
 ## 5. 25-criterion scorecard
 
 Scored 1–10 after the F-01 fix. "Target ≥ 8." Items below 8 carry a registry id.
@@ -161,8 +192,8 @@ Scored 1–10 after the F-01 fix. "Target ≥ 8." Items below 8 carry a registry
 |---|-----------|:----:|------|
 | 1 | Player identity by MLBAM id, never name | 9 | Resolver keys on id; name only as fallback display |
 | 2 | Season resolved from date, never hard-coded | 10 | `season.ts` single source; historical dates resolve correctly |
-| 3 | Role (starter/reliever/hitter) drives the engine | 7 | Inferred from probable-pitcher, not a first-class enum (F-03) |
-| 4 | Hitter opportunity = plate appearances | 8 | Empirical per-game PA from own log; slot-conditioning is the gap (F-02) |
+| 3 | Role (starter/reliever/hitter) drives the engine | 8 | **Fixed this pass (F-03):** first-class `PlayerRole` resolved from the own-side probable starter; relief pitchers flagged, start-model applicability explicit |
+| 4 | Hitter opportunity = plate appearances | 7 | Opportunity IS separated from rate (expectedPA × per-PA rates), but expected PA is the player's own log average — today's lineup slot is not incorporated (F-02) |
 | 5 | Pitcher opportunity = BF / pitch budget with provenance | 9 | `projectWorkloadBudget` with explicit priors + provenance/warnings |
 | 6 | Per-chance rates shrunk to a league prior | 9 | Bayesian shrinkage, versioned priors, sample-size weight |
 | 7 | Opponent/park/context applied multiplicatively | 8 | Hitter path adjusts on opposing pitcher; pitcher path neutral (F-05) |
@@ -185,33 +216,68 @@ Scored 1–10 after the F-01 fix. "Target ≥ 8." Items below 8 carry a registry
 | 24 | Backtest strictly chronological, baselines compared | 9 | Leakage-excluded; coin-flip / shrink baselines scored |
 | 25 | Provenance carried end to end | 8 | Usage/decision provenance rich; opportunity-source labeling could deepen |
 
-**Result:** after F-01, every criterion is **≥ 7**, and **23 of 25 are ≥ 8**.
-The two 7s (F-02 opportunity slot-conditioning, F-03 explicit role enum) are
-genuine, bounded, additive enhancements that require inputs only sometimes
-present and must degrade cleanly — they are the correct next change, not a
-this-pass change, because rushing them risks fabricating a slot/role when the
-data is absent, which would violate the project's non-fabrication contract.
+**Result:** after F-01 and F-03, **24 of 25 criteria are ≥ 8**. The lone
+remaining 7 is criterion 4 (hitter opportunity), analyzed in Section 6.
 
 ---
 
-## 6. Hard limits honestly stated
+## 6. The remaining sub-8 criterion (F-02) and its hard limit
 
-- **Live 2026 validation is partial.** The sandbox's live MLB feed is
-  intermittently synthetic; a formal walk-forward comparison of the pitcher
-  joint model vs the old marginal model requires captured point-in-time history
-  that is not yet accumulated. This is a data-availability limit, not a code
-  defect, and is not claimed as done.
-- **F-02/F-03 are deferred, not dismissed.** They are registered above with
-  evidence and affected props so the next change is scoped, not rediscovered.
+**Criterion 4 — hitter opportunity — remains at 7**, honestly. Opportunity is
+already a first-class concept separated from skill (expected PA × per-PA rates,
+not a raw stat average), and the player's own game-log PA rate is a defensible
+opportunity proxy — a leadoff hitter's log already averages ~4.6 PA/game, a #9
+hitter's ~3.9, so the empirical rate *encodes* their typical slot. What is
+missing is conditioning on **today's** lineup slot when it differs from the norm.
+
+Raising this to ≥ 8 the right way is **partially blocked, not merely unstarted**,
+and the block is documented rather than asserted:
+
+- **HARD LIMIT — point-in-time lineup data.** Reliable *confirmed* batting order
+  is posted by MLB only ~1–2h pregame; before that, only a *projected* slot
+  exists, and in this sandbox the live 2026 lineup feed is intermittently
+  synthetic (the same limit that makes walk-forward validation impossible here).
+  So the marginal information a slot adds *over the empirical-log proxy* cannot be
+  validated in this environment. **Tried:** the projected-lineup adapter
+  (`api.getProjectedLineup`) exists and the role layer added this pass is ready to
+  consume lineup membership; what is absent is trustworthy point-in-time slot
+  data to justify and calibrate a slot→PA adjustment.
+- **Calibration-protection rationale.** A slot→expected-PA override must thread
+  through the calibrated Model-B (`paSim`) path inside the ensemble. Introducing
+  it blind — without the validation data above — risks the very calibration the
+  mission instructs us to preserve. Per criterion 25 (scientific honesty), adding
+  unvalidated precision is worse than an honestly-labeled proxy.
+
+**Recommended next action (when point-in-time lineup history is captured):** add a
+pure `expectedPaForLineupSlot` structural table (observable PA-by-slot facts, not
+fitted coefficients), feed the resolved slot through `RoleResolution` →
+`paSim.expectedPa` with a clean fallback to the log average, and validate the
+change against captured snapshots before shipping.
+
+**Also still true:** live 2026 validation is partial for the same
+data-availability reason; a formal walk-forward comparison of the pitcher joint
+model vs the old marginal model is not claimed as done.
 
 ---
 
 ## 7. What changed on disk this pass
 
+**F-01 — pitcher outs ceiling:**
 - `src/lib/prediction/pitcher/jointSim.ts` — `MAX_START_OUTS = 27` + ceiling
   enforcement in the batter loop.
 - `src/lib/prediction/pitcher/index.ts` — export `MAX_START_OUTS`.
 - `src/lib/prediction/pitcher/pitcher.test.ts` — two invariant tests.
-- `docs/audit/FULL_PROJECT_RECONSIDERATION.md` — this document.
 
-No rates, weights, Monte-Carlo mechanics, or calibration were altered.
+**F-03 — first-class player role:**
+- `src/lib/players/role.ts` (new) — `PlayerRole` + `classifyPitcherRole` /
+  `classifyHitterRole`, pure and dependency-free.
+- `src/lib/players/role.test.ts` (new) — 7 role-invariant tests.
+- `src/lib/mlb/analysis.ts` — capture `ownProbablePitcherId`, compute
+  `analysis.role`, emit a high-severity `role_mismatch` warning for relief.
+- `src/lib/domain/models.ts` — new `role_mismatch` warning code.
+- Two existing test helpers updated to supply the now-required `role`.
+
+**Docs:** `docs/audit/FULL_PROJECT_RECONSIDERATION.md` (this), `CLAUDE.md`.
+
+No rates, weights, Monte-Carlo mechanics, or calibration were altered — both
+corrections are structural (a game-invariant and a typed contract).

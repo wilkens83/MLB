@@ -5,6 +5,7 @@ import { project } from "@/lib/prediction/projection";
 import { simulate, recommend } from "@/lib/prediction/simulate";
 import { analyzeStat } from "@/lib/analytics/hitRate";
 import { computeModelEnsemble } from "@/lib/models";
+import { classifyHitterRole } from "@/lib/players/role";
 import type { AnalysisPayload, EngineAnalysis } from "@/lib/mlb/analysis";
 import { getProp } from "@/lib/props/catalog";
 import type { StatcastPitcher, StatcastBatter } from "@/lib/domain/models";
@@ -19,6 +20,7 @@ function analysisFor(propKey: string, series: number[], line: number): EngineAna
   const me = computeModelEnsemble({ series, family: prop.family, line, seed: "test", marginalSim: simulation, modelVersion: "test" });
   return {
     prop, line, side: "over", projection: projWithLambda, simulation, analytics, recommendation, modeledBy: "marginal",
+    role: classifyHitterRole({}),
     models: me.models, ensemble: me.ensemble, modelDisagreement: me.disagreement,
   };
 }
