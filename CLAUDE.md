@@ -339,7 +339,10 @@ namespace and reuses the pure core.
   never changes the projection; alt lines reuse the distribution; a removed
   pitcher (`live.pitcherActive === false`) accumulates zero future stats and its
   distribution collapses on the recorded stat; K⊆outs, HR⊆hits, walk≠hit event
-  coherence; deterministic under seed; historical hit rate ≠ model probability.
+  coherence; a starter's outing is bounded by the complete-game ceiling
+  (`MAX_START_OUTS = 27` in `jointSim.ts` — a structural baseball invariant, not
+  a tuned parameter, so `pitcher_outs`/innings can never exceed 9 IP in the
+  removal-hazard tail); deterministic under seed; historical hit rate ≠ model probability.
   **Integration:** `runAnalysis` uses the memoized joint sim as the primary +
   structural (Model B) simulator for pitcher props and exposes
   `analysis.pitcherUsage` / `analysis.pitcherJoint`; Player Picks renders an
