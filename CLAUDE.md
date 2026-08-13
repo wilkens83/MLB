@@ -162,6 +162,22 @@ namespace and reuses the pure core.
   the projection. Adds ranking/grading on top. The "protected core" contract
   (engine is never modified) is documented in
   `docs/prizepicks-integration/`.
+  **Import methods (three, one pipeline):** `manual`, `csv`, and `screenshot`
+  (`reviewed-image-import`). All produce the SAME normalized `RawEntry` →
+  `buildBoardEntry` (`providers.ts`) → resolver → market-map → board →
+  `runAnalysis`. Screenshot import is **upload + preview + reviewed-text import**,
+  NOT automatic OCR: the image is visual provenance and a deterministic parser
+  (`screenshot.ts`, `parseScreenshotText`/`extractScreenshots`) turns the
+  human-reviewed text into entries (no vision provider exists, so none is
+  claimed; uncertain fields are flagged, never guessed). **Alternative lines**
+  (goblin/standard/demon) are the SAME canonical market at different thresholds —
+  carried as `alternativeLines` source metadata and evaluated from the ONE model
+  distribution (`evaluate.ts` `probsFromDistribution`; picks `analyzeAltLines`),
+  never as separate props and never re-projecting the player. **PrizePicks source
+  history** (`sourceHistory`, `sourceAverageL5`) is display-only provenance —
+  never fed to the model or used in place of official MLB game-log data. Imported
+  lines flow into Player Picks via `linesForPlayer`, and for a pitcher every
+  imported line reuses the single memoized joint start simulation.
 
 - **AI Data Chat (`src/features/chat/`, `/api/chat`, `/chat`).** A conversational
   analytics workspace. Natural-language questions are answered ONLY from real

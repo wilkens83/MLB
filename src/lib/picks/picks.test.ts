@@ -493,6 +493,22 @@ describe("analyzePlayerPicks — orchestration", () => {
     expect(low.probMore).toBeGreaterThan(high.probMore); // lower threshold ⇒ higher MORE prob
   });
 
+  it("CONSOLIDATION: a pitcher's imported alt lines reuse the ONE joint distribution + usage (PR#32 × PR#36)", async () => {
+    const analyze = (async (req: { propKey: string; line?: number }) => makePayload(req.propKey, [7, 8, 6, 9, 7, 8, 7], req.line)) as never;
+    const result = await analyzePlayerPicks(
+      { playerId: 100, lines: [{ marketKey: "strikeouts", line: 6.5, alternativeLines: [{ line: 4.5 }, { line: 8.5 }] }] },
+      D(analyze),
+    );
+    const k = result.allProps.find((c) => c.propKey === "strikeouts")!;
+    // #32 alt lines: goblin/standard/demon are the same market at 3 thresholds,
+    // all read from the SAME distribution (lower line ⇒ higher MORE prob).
+    expect(k.altLines.length).toBe(3);
+    expect(k.altLines.find((a) => a.line === 4.5)!.probMore).toBeGreaterThan(k.altLines.find((a) => a.line === 8.5)!.probMore);
+    // #36 pitcher usage/volume-efficiency coexists on the same pitcher prop.
+    expect(k.pitcherUsage?.expectedInnings).toBeGreaterThan(0);
+    expect(k.volumeEfficiency?.rates.kPerBf).toBeGreaterThan(0);
+  });
+
   it("is deterministic — identical inputs produce identical rankings", async () => {
     const analyze = (async (req: { propKey: string; line?: number }) => makePayload(req.propKey, [8, 9, 7, 10, 8, 9, 8], req.line)) as never;
     const lines = [{ marketKey: "strikeouts", line: 6.5 }, { marketKey: "hits_allowed", line: 5.5 }];

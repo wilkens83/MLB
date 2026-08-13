@@ -37,7 +37,15 @@ function linesForPlayer(playerId: number, date: string): ImportedLine[] {
     return boardStore
       .loadBoard(date)
       .filter((e) => e.mlbPlayerId === playerId && e.marketKey && e.marketSupported && e.status !== "archived")
-      .map((e) => ({ marketKey: e.marketKey, line: e.line, projectionType: e.projectionType, capturedAt: e.capturedAt }));
+      .map((e) => ({
+        marketKey: e.marketKey,
+        line: e.line,
+        projectionType: e.projectionType,
+        // Imported goblin/standard/demon thresholds for the SAME market flow to
+        // Player Picks and reuse the one distribution (screenshot-import metadata).
+        alternativeLines: e.alternativeLines?.map((a) => ({ line: a.line, projectionType: a.projectionType })),
+        capturedAt: e.capturedAt,
+      }));
   } catch {
     return [];
   }
