@@ -208,6 +208,16 @@ namespace and reuses the pure core.
   `payout.ts` holds configurable Power/Flex tables (labeled configurable, never
   guaranteed); `entry.ts` returns leg win-probs, the P(k correct) distribution,
   and expected payout. Reachable via the chat `analyzeEntry` tool. Pure + tested.
+  **Two non-negotiable rules (Pick Selection Engine):** (1) **never treat multiple
+  props from the same player/pitcher as independent by default** — always evaluate
+  shared-usage / early-exit risk, same-game correlation, and logical conflicts
+  before building a ticket (a hard-hit start helps Hits-More but shortens the
+  outing and suppresses K/Walk accumulation, so those legs are negatively related,
+  not three independent edges); (2) **never force enough picks to fill a ticket —
+  PASS/NO_BET is a valid and often preferred result.** A permanent regression test
+  (`entry.test.ts`, "early-exit conflict") locks rule (1): three same-pitcher MORE
+  legs (Hits+K+Walks) must flag the K↔Hits contradiction, show negative K↔Hits
+  joint correlation, and price P(all win) strictly below the product of marginals.
 
 - **Backtesting metrics (`src/lib/backtest/`).** `computeBacktest(snapshots,
   results)` scores immutable pregame snapshots vs graded results — Brier, log
