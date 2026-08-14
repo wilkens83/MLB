@@ -30,11 +30,36 @@ export const gameSideSchema = z.object({
     .optional(),
 });
 
+const rheSchema = z
+  .object({ runs: z.number().optional(), hits: z.number().optional(), errors: z.number().optional() })
+  .optional();
+
+const linescorePersonSchema = z.object({ id: z.number().optional(), fullName: z.string().optional() }).optional();
+
 export const linescoreSchema = z
   .object({
     currentInning: z.number().optional(),
     inningState: z.string().optional(),
     isTopInning: z.boolean().optional(),
+    scheduledInnings: z.number().optional(),
+    balls: z.number().optional(),
+    strikes: z.number().optional(),
+    outs: z.number().optional(),
+    teams: z.object({ home: rheSchema, away: rheSchema }).optional(),
+    // Base occupancy: MLB returns first/second/third as a runner object when the
+    // base is occupied, and omits the key when empty. Current batter/pitcher
+    // live under offense/defense.
+    offense: z
+      .object({
+        batter: linescorePersonSchema,
+        onDeck: linescorePersonSchema,
+        inHole: linescorePersonSchema,
+        first: linescorePersonSchema,
+        second: linescorePersonSchema,
+        third: linescorePersonSchema,
+      })
+      .optional(),
+    defense: z.object({ pitcher: linescorePersonSchema }).optional(),
   })
   .optional();
 
