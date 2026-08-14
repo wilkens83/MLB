@@ -412,6 +412,37 @@ board / player workbench) and `src/lib/mlb/market.ts` + `/api/market/game`
 `docs/ARCHITECTURE.md`, `docs/MAIN_CONSOLIDATION_AUDIT.md`, and
 `docs/FEATURE_INVENTORY.md`.
 
+## Dashboard scoreboard architecture
+
+The home route (`/`, `src/app/page.tsx`) is a **scoreboard-first MLB overview**,
+not a prediction page. It renders `ScoreboardDashboard`
+(`src/features/dashboard/scoreboard-dashboard.tsx`, client): a **date strip**
+(±3 days around the selected date, prev/next arrows, current highlighted; day
+labels built at noon-UTC so there is no timezone rollover) over a grid of
+**scoreboard cards**. On date change it fetches the existing `/api/games?date=`
+route (no new data system) and maps each `MlbGame` through the pure, tested view
+model `toScoreboardGame` (`src/lib/mlb/scoreboard.ts`).
+
+- **View model (`scoreboard.ts`, pure + `scoreboard.test.ts`):** classifies each
+  game `live` / `final` / `scheduled` / `postponed` / `delayed`; builds the status
+  label ("Top 1st", "Mid 3rd", "Final", start time); extracts R/H/E, base
+  occupancy, balls/strikes/outs, current pitcher/batter (live) or due-up
+  (mid-inning) or probable pitchers (scheduled) or winner (final). `sortScoreboardGames`
+  orders live → scheduled → final.
+- **Data source (extended, not duplicated):** `getSchedule` already hydrates
+  `linescore`. The `linescoreSchema` (`src/lib/schemas/mlb.ts`) and `Linescore`
+  type (`src/lib/mlb/types.ts`) were extended to STOP stripping the live fields
+  (R/H/E `teams`, `balls`/`strikes`/`outs`, `offense` base/batter, `defense`
+  pitcher). The legacy `/games` page + `components/game-card.tsx` are untouched.
+- **Honest-data contract:** fields the schedule linescore does not carry —
+  **last play, win/loss/save decisions, broadcast/highlight links** — are left
+  undefined and omitted cleanly, never fabricated. Actions are limited to two
+  real links: internal **Gamecast** (`/games/[gamePk]`) and external **MLB.com**
+  Gameday; no dead buttons. Empty/loading/error states are all handled.
+- **Do NOT duplicate:** reuse `toScoreboardGame` + `/api/games` for any other
+  scoreboard surface; do not add a second schedule/live model or logo system
+  (`components/team-logo.tsx` is canonical).
+
 ## Conventions
 
 - Path alias `@/*` → `src/*`.

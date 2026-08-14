@@ -43,15 +43,34 @@ export interface GameTeamSide {
   leagueRecord?: { wins: number; losses: number; pct: string };
 }
 
+/** A player reference as it appears inside a live linescore. */
+export interface LinescorePerson {
+  id?: number;
+  fullName?: string;
+}
+
 export interface Linescore {
   currentInning?: number;
   inningState?: string;
   isTopInning?: boolean;
   scheduledInnings?: number;
+  balls?: number;
+  strikes?: number;
+  outs?: number;
   teams?: {
     home?: { runs?: number; hits?: number; errors?: number };
     away?: { runs?: number; hits?: number; errors?: number };
   };
+  /** Base occupancy (first/second/third present ⇒ occupied) + current batter. */
+  offense?: {
+    batter?: LinescorePerson;
+    onDeck?: LinescorePerson;
+    inHole?: LinescorePerson;
+    first?: LinescorePerson;
+    second?: LinescorePerson;
+    third?: LinescorePerson;
+  };
+  defense?: { pitcher?: LinescorePerson };
   innings?: {
     num: number;
     home?: { runs?: number };
