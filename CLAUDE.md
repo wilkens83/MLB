@@ -33,7 +33,7 @@ bun test src -t "no-vig"                         # filter by test name
 bun run scripts/verify-engine.ts                                   # pure math/engine checks
 NODE_EXTRA_CA_CERTS=$CA npx tsx --tsconfig tsconfig.json scripts/verify-data.ts     # live MLB pipeline
 NODE_EXTRA_CA_CERTS=$CA npx tsx --tsconfig tsconfig.json scripts/verify-statcast.ts # live Baseball Savant pipeline
-node scripts/shoot.mjs                                             # Playwright screenshots (also shoot-slate/-analyze/-prizepicks/-redesign)
+node scripts/shoot.mjs                                             # Playwright screenshots (also shoot-slate/-analyze/-prizepicks/-redesign/-chat)
 ```
 
 ### Sandbox networking gotcha
